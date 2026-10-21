@@ -1,9 +1,8 @@
 package handlers
 
-import "net/http"
+import (
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/health"
+)
 
-func Health(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "manual testing"}`))
-}
+// Health forwards to the health module handler for backwards compatibility.
+var Health = health.Handler

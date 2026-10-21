@@ -89,12 +89,40 @@ fix folder structure every main file create a single binary
 ```
 update makefile
 ```makefile
-.PHONY: build run
+.PHONY: build run dev install-air
+install-air:
+	@which air > /dev/null 2>&1 || (echo "Installing Air..." && go install github.com/air-verse/air@latest)
+
+dev: install-air
+	@air
+
 build:
 	@go build -o bin/api/main ./cmd/api
 run: build
 	@./bin/api/main
 ```
+
+### Development with Auto-Restart (Air)
+To enable hot-reloading when modifying Go files during development:
+
+1. **Option A: Host Development (Fastest)**
+```bash
+# From repository root (starts Postgres then launches backend with Air):
+make dev-backend
+
+# Or from backend directory:
+make dev
+```
+Air automatically watches `.go` files and restarts the server on save.
+
+2. **Option B: Docker Compose Development**
+```bash
+# From repository root:
+make dev
+# or:
+make dev-docker
+```
+This runs the full stack with live-mounted source code in Docker using `Dockerfile.dev`.
 initilize git
 ```bash
 git init

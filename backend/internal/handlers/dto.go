@@ -1,37 +1,8 @@
 package handlers
 
-import (
-	"fmt"
-	"strings"
-	"time"
-)
+import "github.com/bhuiyanmarzan/eghissab-v1/internal/modules/listing"
 
-type CreateListingRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Price       int64  `json:"price"`
-	City        string `json:"city"`
-}
-
-type CreateListingResponse struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type ValidationError struct {
-	Field string
-	Msg   string
-}
-
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Field, e.Msg)
-}
-
-func (req CreateListingRequest) Validate() error {
-	if strings.TrimSpace(req.Title) == "" {
-		return &ValidationError{Field: "title", Msg: "message is required"}
-	}
-	// add validation for other remaining field
-	return nil
-}
+// Type aliases for backwards compatibility with legacy handler imports.
+type CreateListingRequest = listing.CreateListingRequest
+type CreateListingResponse = listing.CreateListingResponse
+type ValidationError = listing.ValidationError

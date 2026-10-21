@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -9,12 +10,14 @@ import (
 	"time"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/config"
-	"github.com/bhuiyanmarzan/eghissab-v1/internal/db"
-	"github.com/bhuiyanmarzan/eghissab-v1/internal/handlers"
-	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleare"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleware"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/health"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/listing"
 )
 
 func main() {
+	// Lightweight health check flag for container orchestrators
 	if len(os.Args) > 1 && os.Args[1] == "--health" {
 		port := os.Getenv("PORT")
 		if port == "" {
@@ -29,31 +32,36 @@ func main() {
 
 	cfg := config.MustLoad()
 
-	db, err := db.Connect(cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("main.db.connect: %v", err)
-	}
-
-	// Global logger
+	// Global structured JSON logger
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
-		Level:     slog.LevelInfo, // default
+		Level:     slog.LevelInfo,
 	})
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
+	// Database connection pool
+	db, err := database.Connect(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("main.db.connect: %v", err)
+	}
+	defer db.Close()
+
 	fmt.Println("database connected")
 	fmt.Println("starting olx server...")
 
-	lh := handlers.NewListingHandler(db, logger)
-
+	// HTTP Router
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", handlers.Health)
-	mux.HandleFunc("GET /listings", lh.List)
-	mux.HandleFunc("DELETE /listings/{id}", lh.Delete)
-	mux.HandleFunc("POST /listings", lh.Create)
 
-	handler := middleare.RequestId(mux)
+	// Initialize and register domain modules
+	healthModule := health.NewModule()
+	healthModule.RegisterRoutes(mux)
+
+	listingModule := listing.NewModule(db, logger)
+	listingModule.RegisterRoutes(mux)
+
+	// Global middlewares
+	handler := middleware.RequestId(mux)
 
 	srv := http.Server{
 		Addr:         ":" + cfg.Port,
@@ -62,8 +70,9 @@ func main() {
 		WriteTimeout: time.Second * 30,
 		IdleTimeout:  time.Second * 60,
 	}
-	log.Printf("server is listening on %s", srv.Addr)
-	if err := srv.ListenAndServe(); err != nil {
+
+	logger.Info("server is listening", "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server failed: %v", err)
 	}
 }

@@ -2,7 +2,22 @@
 include .env
 export
 
-.PHONY: deploy up down logs ps migrate-up migrate-down rebuild
+.PHONY: deploy up down logs ps migrate-up migrate-down rebuild dev dev-docker dev-db dev-backend down-dev
+
+# ---------- development ----------
+dev: dev-docker
+
+dev-docker:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+down-dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+
+dev-db:
+	docker compose up -d postgres
+
+dev-backend:
+	@$(MAKE) -C backend dev
 
 # ---------- core ----------
 deploy: up migrate-up

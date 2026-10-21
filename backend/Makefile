@@ -1,13 +1,60 @@
-.PHONY: build run migrate-up migrate-down docker-build docker-run
+# Load environment variables (.env in backend/ or ../.env in root)
+-include .env
+export
+
+# PostgreSQL defaults if not specified in .env
+POSTGRES_USER ?= eghissab
+POSTGRES_PASSWORD ?= change-me-strong-password
+POSTGRES_DB ?= eghissab
+POSTGRES_PORT ?= 5432
+
+# Force local host connections to use localhost rather than docker container hostname 'postgres'
+DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+export DATABASE_URL
+
+.PHONY: build run dev install-air db db-stop db-logs migrate-up migrate-down docker-build docker-run
+
+# ---------- database management ----------
+db:
+	@echo "Checking/Starting PostgreSQL database container..."
+	@docker compose -f ../docker-compose.yml up -d postgres
+	@echo "Waiting for PostgreSQL to be ready..."
+	@until docker compose -f ../docker-compose.yml exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) > /dev/null 2>&1; do \
+		echo "Database is warming up, waiting..."; \
+		sleep 1; \
+	done
+	@echo "✅ PostgreSQL is ready and accepting connections."
+
+db-stop:
+	@echo "Stopping PostgreSQL database container..."
+	@docker compose -f ../docker-compose.yml stop postgres
+
+db-logs:
+	@docker compose -f ../docker-compose.yml logs -f postgres
+
+# ---------- development with auto-restart ----------
+install-air:
+	@which air > /dev/null 2>&1 || (echo "Installing Air..." && go install github.com/air-verse/air@latest)
+
+dev: db install-air
+	@echo "Starting backend with Air (DATABASE_URL configured)..."
+	@air
+
+# ---------- standard build & run ----------
 build:
 	@go build -o bin/api/main ./cmd/api
-run: build
+
+run: db build
 	@./bin/api/main
-migrate-up:
+
+migrate-up: db
 	@go run ./cmd/migrate up
-migrate-down:
+
+migrate-down: db
 	@go run ./cmd/migrate down
+
 docker-build:
 	docker build -t eghissab-backend .
+
 docker-run:
 	docker run --rm -it -p 8080:8080 --env-file .env eghissab-backend
