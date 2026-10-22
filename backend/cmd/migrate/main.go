@@ -20,7 +20,7 @@ func main() {
 
 	m, err := migrate.New(
 		"file://migrations",
-		cfg.DatabaseURL,
+		cfg.MigrationDatabaseURL,
 	)
 	if err != nil {
 		log.Fatalf("migration.New: %v", err)

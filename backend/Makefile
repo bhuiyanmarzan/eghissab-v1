@@ -5,11 +5,18 @@ export
 # PostgreSQL defaults if not specified in .env
 POSTGRES_USER ?= eghissab
 POSTGRES_PASSWORD ?= change-me-strong-password
-POSTGRES_DB ?= eghissab
+POSTGRES_DB ?= eghissab_v1_dev
 POSTGRES_PORT ?= 5432
 
-# Force local host connections to use localhost rather than docker container hostname 'postgres'
-DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+POSTGRES_APP_USER ?= eghissab_app
+POSTGRES_APP_PASSWORD ?= change-me-app-password
+
+# Migration runner connects with privileged user
+MIGRATION_DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+export MIGRATION_DATABASE_URL
+
+# Application server defaults to restricted app user (or falls back to migration credentials if not set)
+DATABASE_URL ?= postgres://$(POSTGRES_APP_USER):$(POSTGRES_APP_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 export DATABASE_URL
 
 .PHONY: build run dev install-air db db-stop db-logs migrate-up migrate-down docker-build docker-run

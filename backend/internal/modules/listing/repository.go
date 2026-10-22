@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 )
 
 var (
@@ -21,17 +23,32 @@ type Repository interface {
 }
 
 type postgresRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	tenantScoped bool
 }
 
 // NewPostgresRepository instantiates a PostgreSQL listing repository.
 func NewPostgresRepository(db *sql.DB) Repository {
-	return &postgresRepository{db: db}
+	return &postgresRepository{db: db, tenantScoped: false}
+}
+
+// NewTenantPostgresRepository instantiates a tenant-guarded repository where queries strictly require an active tenant transaction.
+func NewTenantPostgresRepository(db *sql.DB) Repository {
+	return &postgresRepository{db: db, tenantScoped: true}
+}
+
+func (r *postgresRepository) getExecutor(ctx context.Context) (database.DBTX, error) {
+	return database.GetExecutor(ctx, r.db, r.tenantScoped)
 }
 
 func (r *postgresRepository) List(ctx context.Context, limit int) ([]Listing, error) {
 	if limit <= 0 {
 		limit = 100
+	}
+
+	exec, err := r.getExecutor(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing.repo.List: %w", err)
 	}
 
 	query := `
@@ -40,7 +57,7 @@ func (r *postgresRepository) List(ctx context.Context, limit int) ([]Listing, er
 		ORDER BY created_at DESC
 		LIMIT $1`
 
-	rows, err := r.db.QueryContext(ctx, query, limit)
+	rows, err := exec.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing.repo.List: %w", err)
 	}
@@ -63,13 +80,18 @@ func (r *postgresRepository) List(ctx context.Context, limit int) ([]Listing, er
 }
 
 func (r *postgresRepository) GetByID(ctx context.Context, id string) (*Listing, error) {
+	exec, err := r.getExecutor(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing.repo.GetByID: %w", err)
+	}
+
 	query := `
 		SELECT id, title, description, price, city, created_at
 		FROM listings
 		WHERE id = $1`
 
 	var l Listing
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err = exec.QueryRowContext(ctx, query, id).Scan(
 		&l.ID, &l.Title, &l.Description, &l.Price, &l.City, &l.CreatedAt,
 	)
 	if err != nil {
@@ -82,13 +104,18 @@ func (r *postgresRepository) GetByID(ctx context.Context, id string) (*Listing, 
 }
 
 func (r *postgresRepository) Create(ctx context.Context, req CreateListingRequest) (*CreateListingResponse, error) {
+	exec, err := r.getExecutor(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing.repo.Create: %w", err)
+	}
+
 	query := `
 		INSERT INTO listings (title, description, price, city)
 		VALUES ($1, $2, $3, $4)
 		RETURNING id, title, created_at`
 
 	var out CreateListingResponse
-	err := r.db.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City).
+	err = exec.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City).
 		Scan(&out.ID, &out.Title, &out.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("listing.repo.Create: %w", err)
@@ -98,8 +125,13 @@ func (r *postgresRepository) Create(ctx context.Context, req CreateListingReques
 }
 
 func (r *postgresRepository) Delete(ctx context.Context, id string) error {
+	exec, err := r.getExecutor(ctx)
+	if err != nil {
+		return fmt.Errorf("listing.repo.Delete: %w", err)
+	}
+
 	query := `DELETE FROM listings WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	_, err = exec.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("listing.repo.Delete: %w", err)
 	}

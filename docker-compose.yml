@@ -33,7 +33,7 @@ services:
     environment:
       PORT: "8080"
       ENV: "production"
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_APP_USER:-eghissab_app}:${POSTGRES_APP_PASSWORD:-change-me-app-password}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       LOG_LEVEL: info
     depends_on:
       postgres:
@@ -76,6 +76,7 @@ services:
     environment:
       PORT: "8080"
       ENV: "production"
+      MIGRATION_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     depends_on:
       postgres:
@@ -89,6 +90,7 @@ services:
     environment:
       PORT: "8080"
       ENV: "production"
+      MIGRATION_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     depends_on:
       postgres:
