@@ -15,6 +15,7 @@ import (
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleware"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/health"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/identity"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/listing"
 )
 
@@ -63,10 +64,31 @@ func main() {
 
 	// Initialize transaction & tenant security manager
 	txManager := database.NewTxManager(db)
-	_ = txManager // Available for services requiring transactional boundary
+	// Authentication must never run with a privileged/migration connection.
+	authCtx, authCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err = identity.CheckRuntime(authCtx, db)
+	authCancel()
+	if err != nil {
+		log.Fatalf("identity database configuration: %v", err)
+	}
+	mailer, err := identity.NewSMTPMailer(identity.SMTPConfig{
+		Address: os.Getenv("SMTP_ADDR"), Username: os.Getenv("SMTP_USERNAME"), Password: os.Getenv("SMTP_PASSWORD"),
+		From: os.Getenv("SMTP_FROM"), VerificationURL: os.Getenv("AUTH_VERIFICATION_URL"),
+	})
+	if err != nil {
+		log.Fatalf("identity mail configuration: %v", err)
+	}
+	identityModule, err := identity.NewModule(txManager, identity.Config{
+		SigningKeyBase64: os.Getenv("AUTH_SIGNING_KEY"), Issuer: os.Getenv("AUTH_ISSUER"), Audience: os.Getenv("AUTH_AUDIENCE"),
+		TrustedProxyCIDRs: os.Getenv("AUTH_TRUSTED_PROXY_CIDRS"),
+	}, mailer, logger)
+	if err != nil {
+		log.Fatalf("identity configuration: %v", err)
+	}
 
 	// HTTP Router
 	mux := http.NewServeMux()
+	identityModule.RegisterRoutes(mux)
 
 	// Initialize and register domain modules
 	healthModule := health.NewModule()

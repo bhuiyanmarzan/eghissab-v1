@@ -57,6 +57,7 @@ func ConnectWithPool(databaseURL string, pool PoolConfig) (*sql.DB, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("db.PingContext: %w", err)
 	}
 

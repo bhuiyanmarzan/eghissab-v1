@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -36,18 +35,7 @@ func MustLoad() Config {
 
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		user := os.Getenv("POSTGRES_USER")
-		pass := os.Getenv("POSTGRES_PASSWORD")
-		dbName := os.Getenv("POSTGRES_DB")
-		pgPort := os.Getenv("POSTGRES_PORT")
-		if pgPort == "" {
-			pgPort = "5432"
-		}
-		if user != "" && pass != "" && dbName != "" {
-			databaseURL = fmt.Sprintf("postgres://%s:%s@localhost:%s/%s?sslmode=disable", user, pass, pgPort, dbName)
-		} else {
-			panic("DATABASE_URL is required (set in .env or provide POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)")
-		}
+		panic("DATABASE_URL is required; use the restricted eghissab_app runtime role")
 	}
 
 	migrationDatabaseURL := os.Getenv("MIGRATION_DATABASE_URL")

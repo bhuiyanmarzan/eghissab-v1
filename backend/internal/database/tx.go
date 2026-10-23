@@ -22,6 +22,37 @@ var (
 )
 
 type txContextKey struct{}
+type tenantTxKey struct{}
+type authorizedTx struct {
+	executor DBTX
+	scope    [4]uuid.UUID
+}
+
+var ErrNestedTx = errors.New("database: nested transactions are not supported")
+
+// Callers must establish organization/store membership before attaching this context.
+// This guard proves local RLS initialization, not membership by itself.
+func tenantScope(ctx context.Context) ([4]uuid.UUID, bool) {
+	var scope [4]uuid.UUID
+	tc, ok := tenant.FromContext(ctx)
+	if !ok || tc.UserID == uuid.Nil || tc.OrganizationID == uuid.Nil {
+		return scope, false
+	}
+	scope[0], scope[1] = tc.UserID, tc.OrganizationID
+	if tc.StoreID != nil {
+		if *tc.StoreID == uuid.Nil {
+			return scope, false
+		}
+		scope[2] = *tc.StoreID
+	}
+	if tc.ConsumerID != nil {
+		if *tc.ConsumerID == uuid.Nil {
+			return scope, false
+		}
+		scope[3] = *tc.ConsumerID
+	}
+	return scope, true
+}
 
 // DBTX is the common database executor interface satisfied by both *sql.Tx and *sql.DB (or test mocks).
 type DBTX interface {
@@ -63,7 +94,7 @@ func (m *NoopTxManager) WithTx(ctx context.Context, fn func(ctx context.Context,
 }
 
 func (m *NoopTxManager) WithTenantTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if _, ok := tenant.FromContext(ctx); !ok {
+	if _, ok := tenantScope(ctx); !ok {
 		return ErrNoTenantContext
 	}
 	return fn(ctx)
@@ -86,11 +117,12 @@ func TxFromContext(ctx context.Context) (DBTX, error) {
 // TenantTxFromContext retrieves the active transaction from context, failing with ErrTenantTxRequired
 // if a tenant repository method is called without WithTenantTx.
 func TenantTxFromContext(ctx context.Context) (DBTX, error) {
-	tx, ok := ctx.Value(txContextKey{}).(DBTX)
-	if !ok || tx == nil {
+	marker, ok := ctx.Value(tenantTxKey{}).(authorizedTx)
+	scope, valid := tenantScope(ctx)
+	if !ok || !valid || marker.executor == nil || marker.scope != scope {
 		return nil, ErrTenantTxRequired
 	}
-	return tx, nil
+	return marker.executor, nil
 }
 
 // GetExecutor resolves the query executor:
@@ -98,12 +130,12 @@ func TenantTxFromContext(ctx context.Context) (DBTX, error) {
 // - If no transaction exists and tenantScoped is true, it strictly fails with ErrTenantTxRequired.
 // - If no transaction exists and tenantScoped is false, it returns the fallback *sql.DB.
 func GetExecutor(ctx context.Context, fallbackDB *sql.DB, tenantScoped bool) (DBTX, error) {
+	if tenantScoped {
+		return TenantTxFromContext(ctx)
+	}
 	tx, ok := ctx.Value(txContextKey{}).(DBTX)
 	if ok && tx != nil {
 		return tx, nil
-	}
-	if tenantScoped {
-		return nil, ErrTenantTxRequired
 	}
 	if fallbackDB == nil {
 		return nil, ErrNoActiveTx
@@ -113,6 +145,9 @@ func GetExecutor(ctx context.Context, fallbackDB *sql.DB, tenantScoped bool) (DB
 
 // WithTx runs a standard transaction with automatic commit/rollback.
 func (m *txManager) WithTx(ctx context.Context, fn func(ctx context.Context, tx DBTX) error) error {
+	if _, err := TxFromContext(ctx); err == nil {
+		return ErrNestedTx
+	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("database: begin transaction: %w", err)
@@ -144,6 +179,13 @@ func (m *txManager) WithTx(ctx context.Context, fn func(ctx context.Context, tx 
 // WithTenantTx begins a transaction, sets transaction-local configuration for RLS,
 // binds the transaction to the context, and executes the callback.
 func (m *txManager) WithTenantTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	scope, ok := tenantScope(ctx)
+	if !ok {
+		return ErrNoTenantContext
+	}
+	if _, err := TxFromContext(ctx); err == nil {
+		return ErrNestedTx
+	}
 	tc, ok := tenant.FromContext(ctx)
 	if !ok || tc == nil {
 		return ErrNoTenantContext
@@ -171,7 +213,7 @@ func (m *txManager) WithTenantTx(ctx context.Context, fn func(ctx context.Contex
 		return fmt.Errorf("database: apply tenant rls config: %w", err)
 	}
 
-	ctxWithTx := InjectTx(ctx, tx)
+	ctxWithTx := context.WithValue(InjectTx(ctx, tx), tenantTxKey{}, authorizedTx{executor: tx, scope: scope})
 	if err := fn(ctxWithTx); err != nil {
 		return err
 	}
