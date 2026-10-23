@@ -19,7 +19,7 @@ export MIGRATION_DATABASE_URL
 DATABASE_URL ?= postgres://$(POSTGRES_APP_USER):$(POSTGRES_APP_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 export DATABASE_URL
 
-.PHONY: build run dev install-air db db-stop db-logs migrate-up migrate-down docker-build docker-run
+.PHONY: build run dev install-air db db-stop db-logs migrate-up migrate-down migrate-down-all migrate-force docker-build docker-run
 
 # ---------- database management ----------
 db:
@@ -60,8 +60,11 @@ migrate-up: db
 migrate-down: db
 	@go run ./cmd/migrate down
 
-migrate-down-all: db
-	@go run ./cmd/migrate down-all
+# Usage: make migrate-force VERSION=3
+# Clears the dirty flag without running any SQL — use after a failed migration.
+migrate-force: db
+	@test -n "$(VERSION)" || (echo "❌  VERSION is required: make migrate-force VERSION=<n>"; exit 1)
+	@go run ./cmd/migrate force $(VERSION)
 
 docker-build:
 	docker build -t eghissab-backend .

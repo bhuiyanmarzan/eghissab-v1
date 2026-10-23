@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/config"
 	"github.com/golang-migrate/migrate/v4"
@@ -13,7 +14,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatalf("usage: migrate <up | down>")
+		log.Fatalf("usage: migrate <up | down | down-all | force VERSION>")
 	}
 
 	cfg := config.MustLoad()
@@ -38,11 +39,18 @@ func main() {
 		}
 		log.Println("migration down applied")
 
-	case "down-all":
-		if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+	case "force":
+		if len(os.Args) < 3 {
+			log.Fatalf("usage: migrate force <version>")
+		}
+		v, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			log.Fatalf("force: version must be an integer: %v", err)
+		}
+		if err := m.Force(v); err != nil {
 			log.Fatal(err)
 		}
-		log.Println("migration down all applied")
+		log.Printf("forced schema version to %d (dirty flag cleared)", v)
 
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
