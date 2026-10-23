@@ -60,6 +60,9 @@ migrate-up: db
 migrate-down: db
 	@go run ./cmd/migrate down
 
+migrate-down-all: db
+	@go run ./cmd/migrate down-all
+
 docker-build:
 	docker build -t eghissab-backend .
 
