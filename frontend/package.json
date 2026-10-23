@@ -80,5 +80,11 @@
       "prettier --write"
     ],
     "*.{json,md,css}": "prettier --write"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "core-js",
+      "esbuild"
+    ]
   }
 }

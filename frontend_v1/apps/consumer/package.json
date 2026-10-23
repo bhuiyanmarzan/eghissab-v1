@@ -1,0 +1,35 @@
+{
+  "name": "@eghissab/consumer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3002",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 3002",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@eghissab/api": "workspace:*",
+    "@eghissab/auth": "workspace:*",
+    "@eghissab/config-tailwind": "workspace:*",
+    "@eghissab/ui": "workspace:*",
+    "@tanstack/react-query": "^5.90.2",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.3"
+  },
+  "devDependencies": {
+    "@eghissab/config-eslint": "workspace:*",
+    "@eghissab/config-typescript": "workspace:*",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  }
+}

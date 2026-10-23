@@ -1,0 +1,23 @@
+{
+  "name": "@eghissab/monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "landing": "npx turbo run dev --filter=@eghissab/landing",
+    "admin": "npx turbo run dev --filter=@eghissab/admin",
+    "consumer": "npx turbo run dev --filter=@eghissab/consumer",
+    "merchant": "npx turbo run dev --filter=@eghissab/merchant"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "~5.9.3",
+    "prettier": "^3.6.2"
+  },
+  "packageManager": "pnpm@11.24.0"
+}

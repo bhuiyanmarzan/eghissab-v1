@@ -1,0 +1,52 @@
+@theme {
+  --color-primary: #1677ff;
+  --color-primary-strong: #0958d9;
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface));
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 60%, white);
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-subtle: #f5f7fa;
+  --color-border: #e5e7eb;
+  --color-ink: #1f2937;
+  --color-muted: #7d8796;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #ff4d4f;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.03);
+}
+
+:root {
+  font-family: var(--app-font, Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif);
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--color-canvas);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
+
+.dark {
+  --color-canvas: #111827;
+  --color-surface: #172033;
+  --color-subtle: #202b40;
+  --color-border: #2c3950;
+  --color-ink: #edf2f7;
+  --color-muted: #9aa7b9;
+}

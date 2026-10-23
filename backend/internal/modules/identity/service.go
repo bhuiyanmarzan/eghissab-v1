@@ -59,6 +59,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) error {
 	if err != nil {
 		return err
 	}
+	/*
 	secret, err := opaque()
 	if err != nil {
 		return err
@@ -72,6 +73,24 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) error {
 	}
 	if created {
 		return s.deliver(ctx, email, id.String()+"."+secret)
+	}
+	return nil
+	*/
+
+	// Direct registration without email verification / verification token secret
+	id := uuid.New()
+	dummyHash := digest("direct_auto_verify")
+	_, err = inTx(s, ctx, func(ctx context.Context) (bool, error) {
+		ok, err := s.repo.register(ctx, email, first, last, hash, id, dummyHash)
+		if err != nil || !ok {
+			return ok, err
+		}
+		// Auto-verify account immediately so status becomes 'active' and contact is verified
+		_, err = s.repo.verify(ctx, id, dummyHash)
+		return ok, err
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }

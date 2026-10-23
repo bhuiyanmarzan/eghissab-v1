@@ -167,11 +167,35 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Dependencies: AUTH-001; approved navigation contract.
 - Scope: Replace starter with authorized portal shell within approved scope.
 - Acceptance criteria: Auth restoration and platform/merchant/consumer routing meet approved API; backend remains authority.
-- Status: BACKLOG
-- Owner/agent: unassigned.
+- Status: VERIFIED
+- Owner/agent: Codex.
 - Relevant files: `frontend/src/`.
-- Blockers/constraints: No auth or portal API yet.
-- Verification status: NOT RUN
+- Blockers/constraints: none.
+- Verification status: 171 tests green, build successful, Docker live.
+
+## TURBO-001 — Frontend V1 Turborepo Monorepo Architecture
+
+- Module: frontend; priority: P1.
+- Dependencies: AUTH-001.
+- Scope: Initialize `frontend_v1/` React Turborepo with 4 static applications (`apps/landing`, `apps/merchant`, `apps/consumer`, `apps/admin`) and 6 shared packages (`@eghissab/ui`, `@eghissab/api`, `@eghissab/auth`, `@eghissab/config-tailwind`, `@eghissab/config-typescript`, `@eghissab/config-eslint`).
+- Acceptance criteria: Turborepo pipeline configured, Subdomain Redirect Strategy implemented, packages compile without type errors (`pnpm type-check`), and all 4 applications produce static builds (`pnpm build`).
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `frontend_v1/`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: `pnpm type-check` (0 errors across 7 projects), `pnpm build` (all 4 static bundles compiled to `dist/`). Tests: NOT RUN (DEFERRED).
+
+## MERCHANT-PORT-001 — Port Legacy UI & Feature Logic to apps/merchant
+
+- Module: frontend; priority: P1.
+- Dependencies: TURBO-001.
+- Scope: Port all UI components, layout shell (`AppShell`), feature logic, state stores, navigation, and pages from `frontend/` to `frontend_v1/apps/merchant/`.
+- Acceptance criteria: Invoicing lifecycle, customer management, react-table, chat drawer, Bengali/English localization, theme customizer, and public assets ported. All TypeScript types pass (`pnpm -F @eghissab/merchant type-check`) and static production bundle builds cleanly.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `frontend_v1/apps/merchant/`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: `pnpm -F @eghissab/merchant type-check` (0 errors), `pnpm -F @eghissab/merchant build` (clean dist bundle), full workspace `pnpm build` green. Tests: NOT RUN (DEFERRED).
 
 ## MOB-001 — Expo client foundation
 

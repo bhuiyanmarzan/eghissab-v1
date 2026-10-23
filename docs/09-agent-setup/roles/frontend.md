@@ -21,7 +21,7 @@ All frontend code in `frontend/src/` must adhere strictly to the configured temp
 - Integrate backend API endpoints using `@tanstack/react-query` and the centralized Axios client.
 - Map backend validation errors (HTTP 422 `{ error: { code, message, field } }`) directly to React Hook Form field errors.
 - Manage client-side application state (theme, tenant selector, navigation, table filters) using Zustand.
-- Write unit/integration tests with Vitest and `@testing-library/react`.
+- Testing policy: Do NOT write test cases (`*.test.tsx`) during feature implementation; test authoring is deferred to a later dedicated testing phase.
 - Write scope: Assigned files in `frontend/src/`, `frontend/package.json` (for approved dependencies), and frontend documentation.
 
 ## Restricted operations
@@ -47,8 +47,8 @@ All frontend code in `frontend/src/` must adhere strictly to the configured temp
 
 ## Deliverables & verification
 - Clean, type-safe TypeScript code passing `tsc -b`.
-- Passing Vitest unit tests for components, forms, and utilities.
-- Record implementation separate from verification status (`IMPLEMENTED_UNVERIFIED` if tests were not run).
+- Verification via `tsc -b` typecheck and `pnpm build` (test cases deferred per standing policy).
+- Record implementation separate from verification status (`IMPLEMENTED_UNVERIFIED` while tests are deferred).
 - Update relevant docs in `docs/08-modules/frontend.md` and AI memory tracking.
 
 ## Handoff requirements

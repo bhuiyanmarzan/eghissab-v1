@@ -1,7 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { translateString } from './lib/localization';
+import { useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
+import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import { PublicRoute } from './components/layout/PublicRoute';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { ThemeProvider } from './components/layout/ThemeProvider';
 import { allApplicationRoutes } from './data/navigation';
@@ -22,6 +25,8 @@ import { reactTableFeatures, type ReactTableFeature } from './lib/reactTable';
 import { CustomerListPage } from './pages/CustomerListPage';
 import { TablePage } from './pages/TablePage';
 import { titleFromPath } from './lib/utils';
+import { useAuthStore } from './store/useAuthStore';
+import { refreshSession, getCurrentUser } from './api/auth';
 
 function RouteResolver() {
   useTranslation();
@@ -56,17 +61,73 @@ function RouteResolver() {
 
 function AppRoutes() {
   useTranslation();
-  const authModes = ['login','register','forgot-password','reset-password','check-mail','code-verification'];
-  const maintenance = ['404','500','under-construction','coming-soon','join-waitlist'];
+  const authModes = ['login', 'register', 'forgot-password', 'reset-password', 'check-mail', 'code-verification'];
+  const maintenance = ['404', '500', 'under-construction', 'coming-soon', 'join-waitlist'];
   const privateRoutes = allApplicationRoutes.filter((route) => route !== '/' && !route.startsWith('/auth/') && !route.startsWith('/maintenance/') && !route.startsWith('/apps/invoice/details/') && !route.startsWith('/apps/invoice/edit/'));
-  return <Routes>
-    <Route path="/" element={<Navigate to="/dashboard/analytics" replace />} />
-    {authModes.map((mode)=><Route key={mode} path={`/auth/${mode}`} element={<AuthPage mode={mode}/>} />)}
-    {maintenance.map((type)=><Route key={type} path={`/maintenance/${type}`} element={<MaintenancePage type={type}/>} />)}
-    <Route element={<AppShell/>}><Route path="/apps/invoice/details/:invoiceId" element={<InvoiceRecordPage/>}/><Route path="/apps/invoice/edit/:invoiceId" element={<InvoiceRecordPage editing/>}/>{privateRoutes.map((path)=><Route key={path} path={path} element={<RouteResolver/>}/>)}</Route>
-    <Route path="*" element={<MaintenancePage type="404"/>}/>
-  </Routes>;
+
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/dashboard/analytics" replace />} />
+      {/* Public Guest-Only Routes */}
+      <Route element={<PublicRoute />}>
+        {authModes.map((mode) => (
+          <Route key={mode} path={`/auth/${mode}`} element={<AuthPage mode={mode} />} />
+        ))}
+      </Route>
+      {maintenance.map((type) => (
+        <Route key={type} path={`/maintenance/${type}`} element={<MaintenancePage type={type} />} />
+      ))}
+      
+      {/* Protected Private Routes */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppShell />}>
+          <Route path="/apps/invoice/details/:invoiceId" element={<InvoiceRecordPage />} />
+          <Route path="/apps/invoice/edit/:invoiceId" element={<InvoiceRecordPage editing />} />
+          {privateRoutes.map((path) => (
+            <Route key={path} path={path} element={<RouteResolver />} />
+          ))}
+        </Route>
+      </Route>
+
+      <Route path="*" element={<MaintenancePage type="404" />} />
+    </Routes>
+  );
 }
 
 export function App() {
-  useTranslation(); return <><ThemeProvider /><AppRoutes /></>; }
+  useTranslation();
+  const { setAuth, clearAuth, setInitialized } = useAuthStore();
+
+  useEffect(() => {
+    let mounted = true;
+    const initAuth = async () => {
+      try {
+        const refreshRes = await refreshSession();
+        if (!mounted) return;
+        useAuthStore.getState().setAccessToken(refreshRes.access_token);
+        const user = await getCurrentUser();
+        if (!mounted) return;
+        setAuth(user, refreshRes.access_token);
+      } catch {
+        if (!mounted) return;
+        clearAuth();
+      } finally {
+        if (mounted) {
+          setInitialized(true);
+        }
+      }
+    };
+
+    void initAuth();
+    return () => {
+      mounted = false;
+    };
+  }, [setAuth, clearAuth, setInitialized]);
+
+  return (
+    <>
+      <ThemeProvider />
+      <AppRoutes />
+    </>
+  );
+}

@@ -46,8 +46,8 @@ This workflow guides the Frontend Agent step-by-step when implementing or updati
 ---
 
 ## Phase 4: Verification & quality checks
-1. **Typecheck**: Verify TypeScript compiles without type errors.
-2. **Unit Tests**: Add or run Vitest component tests (`vitest run`).
+1. **Typecheck & Build**: Verify TypeScript compiles without type errors (`tsc -b`, `pnpm build`).
+2. **Testing Policy**: Do NOT write test cases (`*.test.tsx`) during feature coding; test writing is deferred to a later dedicated testing phase.
 3. **Lint & Format**: Ensure ESLint and Prettier pass.
 4. **Manual sanity check**:
    - Does the component render properly in both Light and Dark themes?

@@ -1,0 +1,7 @@
+{
+  "extends": "@eghissab/config-typescript/react-app.json",
+  "compilerOptions": {
+    "composite": true
+  },
+  "include": ["src"]
+}

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ProfileMenu } from './ProfileMenu';
@@ -41,9 +41,11 @@ describe('ProfileMenu', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Account Settings' }));
     expect(screen.getByRole('heading', { name: 'Settings destination' })).toBeInTheDocument();
   });
-  it('returns to login from logout', () => {
+  it('returns to login from logout', async () => {
     setup();
     fireEvent.click(screen.getAllByRole('button', { name: 'Logout' })[0]);
-    expect(screen.getByRole('heading', { name: 'Login destination' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Login destination' })).toBeInTheDocument();
+    });
   });
 });

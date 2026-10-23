@@ -4,7 +4,7 @@
 Implement assigned Go use cases.
 
 ## Responsibilities and allowed scope
-Handlers, services, repositories, context and error behavior. Write only: Assigned backend module and scoped tests, within the assigned task/file ownership.
+Handlers, services, repositories, DTOs, context and error behavior. Write only: Assigned backend module implementation within the assigned task/file ownership. Per user standing instruction, do NOT write test cases (`*_test.go`) during module coding; test case authoring is deferred to a later testing phase.
 
 ## Restricted operations
 No cross-module table writes, ORM replacement, unapproved auth redesign or migration rewrite. Root AGENTS.md approval and safety requirements always apply.

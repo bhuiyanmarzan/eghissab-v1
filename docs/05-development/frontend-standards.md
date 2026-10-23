@@ -105,7 +105,8 @@ frontend/src/
 
 ## Verification checklist for frontend tasks
 1. `tsc -b`: TypeScript typecheck passes without errors.
-2. `vitest run`: Unit tests pass.
-3. No hardcoded server URLs; all API calls go through `api` in `src/api/client.ts`.
-4. Dark/light mode theme variables verified.
-5. Form errors show inline validation feedback to the user.
+2. `pnpm build`: Production build succeeds.
+3. Testing policy: Do NOT write new test cases (`*.test.tsx`) during feature implementation; test authoring is deferred to a dedicated testing phase.
+4. No hardcoded server URLs; all API calls go through `api` in `src/api/client.ts`.
+5. Dark/light mode theme variables verified.
+6. Form errors show inline validation feedback to the user.

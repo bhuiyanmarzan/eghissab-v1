@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/ui" },
+    { "path": "packages/api" },
+    { "path": "packages/auth" },
+    { "path": "apps/landing" },
+    { "path": "apps/merchant" },
+    { "path": "apps/consumer" },
+    { "path": "apps/admin" }
+  ]
+}

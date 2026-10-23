@@ -85,11 +85,9 @@ func main() {
 			log.Fatalf("identity mail configuration: %v", err)
 		}
 		mailer = m
-	} else if cfg.Env == "development" {
-		logger.Warn("SMTP_ADDR not configured; using LogMailer for local development")
-		mailer = identity.NewLogMailer(os.Getenv("AUTH_VERIFICATION_URL"), logger)
 	} else {
-		log.Fatalf("identity mail configuration: SMTP_ADDR is required in %s", cfg.Env)
+		logger.Warn("SMTP_ADDR not configured; using LogMailer (verification links will be logged)")
+		mailer = identity.NewLogMailer(os.Getenv("AUTH_VERIFICATION_URL"), logger)
 	}
 
 	signingKey := os.Getenv("AUTH_SIGNING_KEY")

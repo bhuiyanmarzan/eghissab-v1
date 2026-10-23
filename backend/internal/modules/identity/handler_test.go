@@ -238,8 +238,8 @@ func TestHandler_CookieHelpers(t *testing.T) {
 	if !found.HttpOnly {
 		t.Fatalf("cookie must be HttpOnly")
 	}
-	if found.Path != "/auth" {
-		t.Fatalf("expected path /auth, got: %s", found.Path)
+	if found.Path != "/" {
+		t.Fatalf("expected path /, got: %s", found.Path)
 	}
 	if found.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("expected SameSite Lax")

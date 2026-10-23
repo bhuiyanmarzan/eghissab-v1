@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -131,8 +132,14 @@ func (m *Module) fail(w http.ResponseWriter, err error) {
 		httpx.Error(w, 500, "Internal server error", httpx.CodeInternalError)
 	}
 }
+/*
 func accepted(w http.ResponseWriter) {
 	respond(w, 202, map[string]string{"message": "If eligible, verification instructions have been sent"})
+}
+*/
+func accepted(w http.ResponseWriter) {
+	// Verification email instructions commented out - direct registration
+	respond(w, 200, map[string]string{"message": "Registration successful"})
 }
 func (m *Module) register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -191,16 +198,22 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 
 const refreshCookieName = "refresh_token"
 const refreshCookieLifetime = 30 * 24 * time.Hour
+const refreshCookiePath = "/"
 
 func isHTTPS(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	if s := os.Getenv("AUTH_COOKIE_SECURE"); s != "" {
+		return s == "true" || s == "1"
+	}
+	return r.TLS != nil ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on")
 }
 
 func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
 		Value:    token,
-		Path:     "/auth",
+		Path:     refreshCookiePath,
 		HttpOnly: true,
 		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
@@ -209,6 +222,17 @@ func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string) {
 }
 
 func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     refreshCookiePath,
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+	})
+	// Invalidate any legacy cookie previously bound to /auth
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
 		Value:    "",
@@ -242,23 +266,21 @@ func (m *Module) login(w http.ResponseWriter, r *http.Request) {
 func (m *Module) refresh(w http.ResponseWriter, r *http.Request) {
 	var refreshToken string
 
-	// 1. If body is non-empty and Content-Type is json, decode it
-	ct := strings.Split(r.Header.Get("Content-Type"), ";")[0]
-	if strings.TrimSpace(ct) == "application/json" && r.Body != nil && r.ContentLength > 0 {
-		var in struct {
-			Refresh string `json:"refresh_token"`
-		}
-		if err := decode(w, r, &in); err != nil {
-			m.fail(w, err)
-			return
-		}
-		refreshToken = in.Refresh
+	// 1. Check HttpOnly cookie first (primary secure transport for browsers)
+	if cookie, err := r.Cookie(refreshCookieName); err == nil && cookie.Value != "" {
+		refreshToken = cookie.Value
 	}
 
-	// 2. If not provided in body, check HttpOnly cookie
+	// 2. If not provided in cookie, fall back to JSON request body
 	if refreshToken == "" {
-		if cookie, err := r.Cookie(refreshCookieName); err == nil && cookie.Value != "" {
-			refreshToken = cookie.Value
+		ct := strings.Split(r.Header.Get("Content-Type"), ";")[0]
+		if strings.TrimSpace(ct) == "application/json" && r.Body != nil && r.ContentLength > 0 {
+			var in struct {
+				Refresh string `json:"refresh_token"`
+			}
+			if err := decode(w, r, &in); err == nil && in.Refresh != "" {
+				refreshToken = in.Refresh
+			}
 		}
 	}
 

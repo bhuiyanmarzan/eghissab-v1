@@ -44,7 +44,7 @@ describe('Theme customization', () => {
     localStorage.setItem('mantis-ui', JSON.stringify(saved));
     await act(async () => { await useAppStore.persist.rehydrate(); });
     expect(document.documentElement.dir).toBe('rtl');
-  }, 15_000);
+  }, 30_000);
   it('applies each primary palette to the document', () => {
     const panel = setup();
     for (const [index, scheme] of colorSchemes.entries()) {

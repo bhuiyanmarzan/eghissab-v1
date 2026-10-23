@@ -2,7 +2,7 @@
 include .env
 export
 
-.PHONY: deploy up down logs ps migrate-up migrate-down rebuild dev dev-docker dev-db dev-backend down-dev
+.PHONY: deploy up down logs ps migrate-up migrate-down rebuild dev dev-docker dev-db dev-backend dev-frontend down-dev test test-backend test-frontend
 
 # ---------- development ----------
 dev: dev-docker
@@ -18,6 +18,21 @@ dev-db:
 
 dev-backend:
 	@$(MAKE) -C backend dev
+
+dev-frontend:
+	@echo "Starting frontend with Vite (proxying /api to http://localhost:8080)..."
+	@cd frontend && pnpm dev:web
+
+# ---------- testing ----------
+test-backend:
+	@echo "Running backend test suite..."
+	@cd backend && go test -v -count=1 ./...
+
+test-frontend:
+	@echo "Running frontend test suite..."
+	@cd frontend && pnpm test
+
+test: test-backend test-frontend
 
 # ---------- core ----------
 deploy: up migrate-up

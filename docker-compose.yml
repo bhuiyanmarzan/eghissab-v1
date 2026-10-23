@@ -32,18 +32,18 @@ services:
       - "${PORT:-8080}:8080"
     environment:
       PORT: "8080"
-      ENV: "production"
+      ENV: ${ENV:-production}
       DATABASE_URL: postgres://${POSTGRES_APP_USER:-eghissab_app}:${POSTGRES_APP_PASSWORD:-change-me-app-password}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY:-ZGV2ZWxvcG1lbnQtYXV0aC1zaWduaW5nLWtleS0zMmJ5dGVzISE=}
-      AUTH_ISSUER: ${AUTH_ISSUER}
-      AUTH_AUDIENCE: ${AUTH_AUDIENCE}
-      AUTH_VERIFICATION_URL: ${AUTH_VERIFICATION_URL}
-      AUTH_TRUSTED_PROXY_CIDRS: ${AUTH_TRUSTED_PROXY_CIDRS}
-      SMTP_ADDR: ${SMTP_ADDR}
-      SMTP_USERNAME: ${SMTP_USERNAME}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_FROM: ${SMTP_FROM}
-      LOG_LEVEL: info
+      AUTH_ISSUER: ${AUTH_ISSUER:-eghissab}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-eghissab-clients}
+      AUTH_VERIFICATION_URL: ${AUTH_VERIFICATION_URL:-http://localhost/auth/verify-email}
+      AUTH_TRUSTED_PROXY_CIDRS: ${AUTH_TRUSTED_PROXY_CIDRS:-}
+      SMTP_ADDR: ${SMTP_ADDR:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy

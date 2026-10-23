@@ -32,7 +32,7 @@ Status: TEMPLATE_CONFIGURED. Evidence: `frontend/` directory with Vite, React 19
 - **Agent workflow**: [Frontend development workflow](../09-agent-setup/workflows/frontend-development.md)
 
 ## Remaining work and acceptance
-1. **WEB-001**: Connect the `PublicPages.tsx` registration and login forms to the live backend identity endpoints (`POST /auth/register`, `POST /auth/login`, `GET /auth/me`), mapping HTTP 422 validation errors to form fields.
+1. **WEB-001**: Connect `PublicPages.tsx` registration, login, verification, and session lifecycle to the live backend identity endpoints (`POST /auth/register`, `POST /auth/login`, `POST /auth/verify-email`, `POST /auth/resend-verification`, `POST /auth/refresh`, `GET /auth/me`, `POST /auth/logout`, `POST /auth/logout-all`). Status: IMPLEMENTED (with in-memory `useAuthStore`, `ProtectedRoute`, silent refresh interceptors, and HTTP 422 error mapping).
 2. **WEB-002**: Connect tenant selection in `useTenantStore` to real organization membership queries once ORG-001 is completed.
 3. **WEB-003**: Connect invoice and customer pages to real backend service endpoints.
 
