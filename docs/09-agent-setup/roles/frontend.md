@@ -1,28 +1,55 @@
 # Frontend role
 
 ## Mission
-Build approved web portal behavior.
+Build and maintain approved web portal applications and features using the project's established frontend template and architectural standards.
+
+## Established template & technology stack
+All frontend code in `frontend/src/` must adhere strictly to the configured template:
+- **Build tool**: Vite 7 + TypeScript 5.9 (`pnpm`).
+- **Core UI**: React 19 (`react`, `react-dom`).
+- **Styling**: Tailwind CSS v4 (`@tailwindcss/vite`, `@import "tailwindcss";`, `@theme` tokens in `src/index.css`).
+- **Design system & primitives**: shadcn / Radix UI primitives (`src/components/ui/primitives.tsx`, `components.json`), Lucide icons (`lucide-react`), CVA (`class-variance-authority`), and `cn` helper (`src/lib/utils.ts`).
+- **Routing**: React Router DOM v7 (`react-router-dom`, `src/App.tsx`, `src/components/layout/AppShell.tsx`).
+- **Server state**: TanStack React Query v5 (`@tanstack/react-query`) with Axios HTTP client (`src/api/client.ts`).
+- **Forms & validation**: React Hook Form v7 (`react-hook-form`), Zod v4 (`zod`), and `@hookform/resolvers/zod`.
+- **Client state**: Zustand v5 (`zustand`, `persist` middleware) in `src/store/` (e.g., `useAppStore`, `useTenantStore`).
+- **Data tables**: TanStack React Table v8 (`@tanstack/react-table`) with rich table controls (`src/components/react-table/`, `src/lib/reactTable.ts`).
+- **Localization**: `react-i18next` with locales in `src/locales/`.
 
 ## Responsibilities and allowed scope
-React TypeScript UI, API errors, auth restoration and accessible navigation. Write only: Assigned frontend/src and approved contract updates, within the assigned task/file ownership.
+- Build responsive, accessible UI components and pages using the template's design system and primitives.
+- Integrate backend API endpoints using `@tanstack/react-query` and the centralized Axios client.
+- Map backend validation errors (HTTP 422 `{ error: { code, message, field } }`) directly to React Hook Form field errors.
+- Manage client-side application state (theme, tenant selector, navigation, table filters) using Zustand.
+- Write unit/integration tests with Vitest and `@testing-library/react`.
+- Write scope: Assigned files in `frontend/src/`, `frontend/package.json` (for approved dependencies), and frontend documentation.
 
 ## Restricted operations
-No inventing endpoints, frontend-only authorization or unauthorized dependency upgrades. Root AGENTS.md approval and safety requirements always apply.
+- **Never reinvent basic UI primitives**: Always reuse existing primitives in `src/components/ui/primitives.tsx` (`Button`, `Card`, `Input`, `Select`, `Badge`, `Avatar`).
+- **Never mirror server state in Zustand**: Keep server-fetched entities in TanStack Query cache. Use Zustand only for client UI/tenant/session state.
+- **Never bypass server-side validation**: Frontend validation is for immediate UX feedback; the backend DTO validation remains the source of truth.
+- **Never invent endpoints or unauthorized contract modifications**: All API calls must align with backend specifications in `docs/04-api/`.
+- **No unauthorized major framework or library replacements**: Adhere strictly to the established Vite/React/Tailwind/shadcn/Zustand stack.
 
 ## Required reading
-Read root AGENTS.md, all docs/00-ai-context files, related source and accepted ADRs; additionally docs/04-api/; docs/08-modules/frontend.md (paths are repository-relative).
-
-## Relevant modules
-frontend/; current starter only.
+1. Root [AGENTS.md](../../AGENTS.md)
+2. [Frontend standards](../../docs/05-development/frontend-standards.md)
+3. [Frontend development workflow](../workflows/frontend-development.md)
+4. [API documentation](../../docs/04-api/) (API conventions, authentication API, OpenAPI)
+5. [Frontend module documentation](../../docs/08-modules/frontend.md)
 
 ## Architecture rules
-Use explicit module interfaces, database/sql and transaction-local authorized context for database work. Never trust client tenant selectors as permission. Distinguish existing code, proposed design and unknown runtime state. Roles do not authorize concurrent edits.
+- Use `cn(...)` from `src/lib/utils` for conditional classes; never use raw string concatenation for Tailwind classes.
+- Respect design tokens (`var(--color-primary)`, `var(--color-surface)`, `bg-surface`, `text-ink`, `border-border`).
+- Ensure all pages and components work seamlessly in both Light and Dark modes.
+- Support internationalization: wrap display text in `translateNode` or `translateString`.
+- Use tenant context from `useTenantStore` for multi-tenant queries; client tenant IDs are selectors, never authority.
 
-## Deliverables
-UI changes, API integration record and review evidence. Keep implementation completion separate from verification status.
-
-## Review expectations
-Review assigned diff against acceptance criteria, business rules, interface ownership and security. A second reviewer is read-only unless separately assigned independent write scope. Record confirmed versus suspected findings.
+## Deliverables & verification
+- Clean, type-safe TypeScript code passing `tsc -b`.
+- Passing Vitest unit tests for components, forms, and utilities.
+- Record implementation separate from verification status (`IMPLEMENTED_UNVERIFIED` if tests were not run).
+- Update relevant docs in `docs/08-modules/frontend.md` and AI memory tracking.
 
 ## Handoff requirements
-Update backlog owner/status, current-status, known issues, relevant module/API docs, append-only session-history and next-session. Include files changed, decisions, executed checks, NOT RUN checks and blockers. Stop after the assigned task. Never overwrite another active task's files.
+Follow [finish-session](../workflows/finish-session.md). Update backlog owner/status, `current-status.md`, `session-history.md`, and `next-session.md`. Never overwrite concurrent changes.

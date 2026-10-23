@@ -12,7 +12,8 @@
 - Use structured slog and request IDs; do not log passwords, tokens, DSNs, MFA secrets or unnecessary personal data.
 - Load/validate configuration once; separate migration/runtime roles and fail closed on unsafe production configuration. Close resources on failed startup as well as shutdown.
 - Retain HTTP read/write/idle timeouts and graceful signal shutdown. Changes to operational behavior must be documented.
+- Input validation and DTOs: Define all HTTP request/response payloads in a module-level `dto.go`. Request structs must implement `Validate() error` returning a field-specific `*ValidationError{Field, Msg}` with trimmed string comparisons and length/character validation. Handlers check `errors.As(err, &verr)` and respond with HTTP 422 Unprocessable Entity using `httpx.ValidationError(w, http.StatusUnprocessableEntity, verr.Msg, httpx.CodeValidationFailed, verr.Field)`. Accompany every DTO with full unit tests in `dto_test.go` covering both valid and boundary/invalid cases.
 
-Evidence: `backend/cmd/api/main.go`, `internal/config/config.go`, `internal/database/`, `internal/modules/listing/`. Known deviations: [issues](../00-ai-context/known-issues.md).
+Evidence: `backend/cmd/api/main.go`, `internal/config/config.go`, `internal/database/`, `internal/modules/listing/`, `internal/modules/identity/`. Known deviations: [issues](../00-ai-context/known-issues.md).
 
 Related: [Documentation index](../README.md).

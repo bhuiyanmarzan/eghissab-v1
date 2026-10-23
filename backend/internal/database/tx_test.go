@@ -59,7 +59,23 @@ func TestTxFromContext_Injected(t *testing.T) {
 		t.Fatalf("expected injected tx to match mockTx")
 	}
 
-	tenantTx, err := TenantTxFromContext(ctx)
+	// Generic injection without tenant context must be rejected by TenantTxFromContext
+	_, err = TenantTxFromContext(ctx)
+	if !errors.Is(err, ErrTenantTxRequired) {
+		t.Fatalf("expected ErrTenantTxRequired without authorized tenant scope, got: %v", err)
+	}
+
+	// With matching tenant context and authorized tenant tx injection:
+	uid := uuid.New()
+	orgID := uuid.New()
+	tenantCtx := tenant.WithContext(context.Background(), &tenant.Context{
+		UserID:         uid,
+		OrganizationID: orgID,
+	})
+	scope := [4]uuid.UUID{uid, orgID}
+	authCtx := InjectTenantTx(tenantCtx, mockTx, scope)
+
+	tenantTx, err := TenantTxFromContext(authCtx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,11 +94,10 @@ func TestGetExecutor(t *testing.T) {
 	}
 
 	// Non-tenant without tx returns fallback DB
-	// We can test fallback with injected mock tx
 	mockTx := &mockDBTX{}
 	ctxWithTx := InjectTx(ctx, mockTx)
 
-	exec, err := GetExecutor(ctxWithTx, nil, true)
+	exec, err := GetExecutor(ctxWithTx, nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

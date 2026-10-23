@@ -1,23 +1,39 @@
 # Frontend module
 
 ## Purpose and business responsibilities
-Web portals. Follow [business rules](../01-product/business-rules.md); do not infer unapproved domain rules.
+Provides the multi-tenant web application portal for business operations, analytics dashboards, invoicing, customer management, inventory/products, authentication, and user profile management.
 
-## Implementation and evidence
-Status: PARTIALLY_IMPLEMENTED. Evidence: `frontend/src/App.tsx`. IMPLEMENTED means present code, not executed verification. Runtime verification: NOT RUN. Existing implementation is a starter/prototype, not a completed business portal.
+## Implementation and template architecture
+Status: TEMPLATE_CONFIGURED. Evidence: `frontend/` directory with Vite, React 19, Tailwind CSS v4, shadcn/ui, React Router DOM, TanStack React Query, React Hook Form, Zustand, and TanStack React Table.
+
+### Key architectural layers:
+- **Application Shell & Navigation**: `src/components/layout/AppShell.tsx` hosts sidebar navigation, header, theme toggles, and tenant switcher. Route declarations live in `src/App.tsx` and navigation manifests in `src/data/navigation.ts`.
+- **UI Primitives**: Located in `src/components/ui/primitives.tsx` using Radix UI + Tailwind v4 + CVA (`Button`, `Card`, `Input`, `Select`, `Badge`, `Avatar`).
+- **Data Table Engine**: Located in `src/components/react-table/` and `src/lib/reactTable.ts` utilizing `@tanstack/react-table` for sorting, filtering, row selection, column toggles, and export.
+- **Form System**: Built with `react-hook-form` + `zod` schema resolvers. Intercepts backend HTTP 422 `{ error: { code, message, field } }` envelopes to surface field-level validation errors directly under inputs.
+- **State Management**:
+  - **Server State**: Managed via `@tanstack/react-query` (`QueryClient` configured in `src/main.tsx`).
+  - **Client State**: Managed via Zustand stores in `src/store/` (`useAppStore` for theme/layout/RTL, `useTenantStore` for multi-tenant context, `useNotificationStore`, etc.).
+- **HTTP Client**: Centralized Axios client in `src/api/client.ts` configured with `/api` proxy and 8s default timeout.
+- **Styling & Theming**: Tailwind CSS v4 configured via `@tailwindcss/vite` and `@theme` design tokens in `src/index.css`. Fully supports dark mode (`.dark`) and RTL/LTR text direction.
+- **Internationalization**: `react-i18next` configured in `src/i18n.ts` with locale dictionaries in `src/locales/`.
 
 ## Ownership and interfaces
-- Database ownership: none.
-- Dependencies: target authenticated API.
-- Main services / API endpoints: starter React component only.
-- Events: none implemented; any future event contract requires design review.
-- Permissions: no business authorization implemented here; health is public liveness. Other exposed prototype routes are not a model for protected business access.
-- RLS requirements: server-derived validated context, appropriate scope and least privilege for any database operation; see [policy inventory](../03-database/rls-policies.md). No defined table policies currently.
+- **Database ownership**: None directly. All mutations and queries occur through the authenticated Go backend API.
+- **Dependencies**: Backend HTTP API (`/api/*` via Nginx reverse proxy).
+- **Authentication integration**:
+  - Public auth flows: Login, Register, Email Verification, Password Reset in `src/pages/PublicPages.tsx`.
+  - Credentials & sessions: Relies on HttpOnly refresh token cookies and Bearer access tokens returned by `/auth/login` and `/auth/refresh`.
+  - Context injection: Selected tenant from `useTenantStore` sent via headers/query parameters for tenant-scoped operations.
+
+## Standards and workflows
+- **Coding standards**: [Frontend standards](../05-development/frontend-standards.md)
+- **Agent role specification**: [Frontend role](../09-agent-setup/roles/frontend.md)
+- **Agent workflow**: [Frontend development workflow](../09-agent-setup/workflows/frontend-development.md)
 
 ## Remaining work and acceptance
-WEB-001. Acceptance criteria come from the corresponding [backlog](../00-ai-context/task-backlog.md) entry. For planned modules, first review schema/API/business rules, then implement within assigned ownership; require positive and cross-scope negative authorization evidence before declaring verified. For health, verify its documented response when runtime checks are permitted. Shared table access must use owning-module interfaces, not direct cross-module writes.
-
-## Handoff
-No write ownership is assigned by this document. Claim a task before changes; update status, interfaces, evidence and remaining work at task completion.
+1. **WEB-001**: Connect the `PublicPages.tsx` registration and login forms to the live backend identity endpoints (`POST /auth/register`, `POST /auth/login`, `GET /auth/me`), mapping HTTP 422 validation errors to form fields.
+2. **WEB-002**: Connect tenant selection in `useTenantStore` to real organization membership queries once ORG-001 is completed.
+3. **WEB-003**: Connect invoice and customer pages to real backend service endpoints.
 
 Related: [Documentation index](../README.md).

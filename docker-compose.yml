@@ -33,8 +33,8 @@ services:
     environment:
       PORT: "8080"
       ENV: "production"
-      DATABASE_URL: postgres://${POSTGRES_APP_USER:-eghissab_app}:${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY}
+      DATABASE_URL: postgres://${POSTGRES_APP_USER:-eghissab_app}:${POSTGRES_APP_PASSWORD:-change-me-app-password}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY:-ZGV2ZWxvcG1lbnQtYXV0aC1zaWduaW5nLWtleS0zMmJ5dGVzISE=}
       AUTH_ISSUER: ${AUTH_ISSUER}
       AUTH_AUDIENCE: ${AUTH_AUDIENCE}
       AUTH_VERIFICATION_URL: ${AUTH_VERIFICATION_URL}

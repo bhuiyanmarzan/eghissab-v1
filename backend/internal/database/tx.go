@@ -105,6 +105,11 @@ func InjectTx(ctx context.Context, tx DBTX) context.Context {
 	return context.WithValue(ctx, txContextKey{}, tx)
 }
 
+// InjectTenantTx binds a DBTX transaction and authorized tenant scope into the context (useful for tests).
+func InjectTenantTx(ctx context.Context, tx DBTX, scope [4]uuid.UUID) context.Context {
+	return context.WithValue(InjectTx(ctx, tx), tenantTxKey{}, authorizedTx{executor: tx, scope: scope})
+}
+
 // TxFromContext retrieves the DBTX transaction from context, or returns ErrNoActiveTx.
 func TxFromContext(ctx context.Context) (DBTX, error) {
 	tx, ok := ctx.Value(txContextKey{}).(DBTX)

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/google/uuid"
@@ -44,17 +43,16 @@ func (s *Service) budget(ctx context.Context, key string) error {
 	}
 	return nil
 }
-func (s *Service) Register(ctx context.Context, email, first, last, password string) error {
-	email, err := normalizeEmail(email)
-	if err != nil {
+func (s *Service) Register(ctx context.Context, req RegisterRequest) error {
+	if err := req.Validate(); err != nil {
 		return err
 	}
-	first = strings.TrimSpace(first)
-	last = strings.TrimSpace(last)
-	if !utf8.ValidString(first) || !utf8.ValidString(last) || len(first) == 0 || utf8.RuneCountInString(first) > 120 || utf8.RuneCountInString(last) > 120 {
-		return fmt.Errorf("%w: first_name required; names limited to 120 characters", ErrValidation)
-	}
-	if err = s.budget(ctx, "register:"+email); err != nil {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	first := strings.TrimSpace(req.FirstName)
+	last := strings.TrimSpace(req.LastName)
+	password := req.Password
+
+	if err := s.budget(ctx, "register:"+email); err != nil {
 		return err
 	}
 	hash, err := hashPassword(password)

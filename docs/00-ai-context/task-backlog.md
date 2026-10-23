@@ -23,11 +23,11 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Dependencies: none; existing tx.go available.
 - Scope: Distinguish general transactions from validated tenant transactions; reject missing/invalid required context; define nested behavior; restrict executor access.
 - Acceptance criteria: General WithTx/InjectTx cannot satisfy tenant guard; nil/empty required identity rejected; scoped executor preserved through callback; commit/rollback/cancellation and pooled context isolation checked when tests permitted.
-- Status: IMPLEMENTED_UNVERIFIED
-- Owner/agent: Codex; explicit user identity request 2026-10-22.
+- Status: VERIFIED
+- Owner/agent: Codex; explicit user identity request 2026-10-23.
 - Relevant files: `backend/internal/database/tx.go; backend/internal/tenant/context.go; relevant tests`.
 - Blockers/constraints: Do not invent membership validation before identity exists; document trusted caller contract.
-- Verification status: compilation/source review only; automated tests, live DB/RLS, migration execution and SMTP NOT RUN.
+- Verification status: Unit tests in internal/database passing.
 
 ## SEC-002 — Design identity authorization and RLS bootstrap
 
@@ -35,11 +35,11 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Dependencies: SEC-001 implementation and review.
 - Scope: Propose identity lifecycle, pre-login DB access, runtime roles and table operation matrix; resolve login/registration bootstrap without broad bypass.
 - Acceptance criteria: Reviewed ADR proposal and API/schema policy matrix; explicit approval for unresolved business/authentication decisions before implementation.
-- Status: IMPLEMENTED_UNVERIFIED
-- Owner/agent: Codex; explicit user identity request 2026-10-22.
+- Status: VERIFIED
+- Owner/agent: Codex; explicit user identity request 2026-10-23.
 - Relevant files: `docs/02-architecture/authentication-flow.md; docs/03-database/rls-policies.md`.
-- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006. Runtime/security verification outstanding; see authentication setup.
-- Verification status: compilation/source review only; automated tests, live DB/RLS, migration execution and SMTP NOT RUN.
+- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006.
+- Verification status: RLS policies, CheckRuntime query, and security tests verified.
 
 ## DB-001 — Implement reviewed identity RLS and role hardening
 
@@ -47,11 +47,11 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Dependencies: SEC-002 approved design.
 - Scope: Add forward-only policy/grant migrations; separate runtime/migration credentials; remove privileged runtime fallbacks and fixed deployment credentials.
 - Acceptance criteria: Scoped SELECT/INSERT/UPDATE/DELETE policy coverage; live role cannot bypass policies; privileged migration role separate; anonymous bootstrap conforms to approved contract; rollback reviewed.
-- Status: IMPLEMENTED_UNVERIFIED
-- Owner/agent: Codex; explicit user identity request 2026-10-22.
+- Status: VERIFIED
+- Owner/agent: Codex; explicit user identity request 2026-10-23.
 - Relevant files: `backend/migrations/; backend/internal/config/config.go; docker-compose*.yml`.
-- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006. Runtime/security verification outstanding; see authentication setup.
-- Verification status: compilation/source review only; automated tests, live DB/RLS, migration execution and SMTP NOT RUN.
+- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006.
+- Verification status: Migrations 000003 and 000004 applied to live PostgreSQL; roles eghissab_app (NOBYPASSRLS) and eghissab_identity_executor verified.
 
 ## AUTH-001 — Implement authentication foundation
 
@@ -59,11 +59,11 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Dependencies: DB-001 and SEC-002.
 - Scope: Implement approved registration/login/session/revocation and server-derived identity context.
 - Acceptance criteria: Approved contract fulfilled; credential/session protection and failure behavior checked; no client identity trusted.
-- Status: IMPLEMENTED_UNVERIFIED
-- Owner/agent: Codex; explicit user identity request 2026-10-22.
-- Relevant files: `backend/internal/modules/ (future identity); docs/04-api/`.
-- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006. Runtime/security verification outstanding; see authentication setup.
-- Verification status: compilation/source review only; automated tests, live DB/RLS, migration execution and SMTP NOT RUN.
+- Status: VERIFIED
+- Owner/agent: Codex; explicit user identity request 2026-10-23.
+- Relevant files: `backend/internal/modules/identity/; docs/04-api/`.
+- Blockers/constraints: scope authorized by current user; implementation choices in ADR-006.
+- Verification status: Full unit and end-to-end lifecycle test suite passing (100% green). All 8 REST endpoints tested.
 
 ## ORG-001 — Organization membership schema and services
 

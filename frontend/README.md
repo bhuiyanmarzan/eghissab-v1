@@ -1,78 +1,94 @@
-# React + TypeScript + Vite
+# Mantis Enterprise Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A route-complete React implementation based on the supplied Mantis dashboard references. It includes dashboard analytics, tables, forms, customer/invoice/e-commerce flows, profiles, chat, calendar, kanban, authentication, maintenance pages, charts, pricing, and a component catalog.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19 + TypeScript + Vite
+- React Router for all application routes
+- TanStack Query and Axios for server data
+- Zustand for persisted UI state
+- React Hook Form + Zod for validated forms
+- shadcn-style local components with Tailwind CSS
+- TanStack Table for filtering, sorting, and pagination
+- Recharts and date-fns
+- i18next with English and Bengali resources
+- Vitest, React Testing Library, and Playwright
+- ESLint, Prettier, Husky, and lint-staged
+- OpenAPI contract for the mock API
 
-## React Compiler
+## Requirements
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- Node.js 20 or newer
+- pnpm 9 or newer
 
-Note: This will impact Vite dev & build performances.
-You can also try [the experimental native React Compiler support in plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md#rust-react-compiler) by using `compiler: true` in the plugin options instead of using the Babel plugin.
+## Run locally
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+pnpm install
+pnpm dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+This starts both services:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- Frontend: `http://localhost:5173`
+- Mock JSON API: `http://localhost:4000`
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Open `http://localhost:5173/dashboard/analytics`. The demo login is available at `http://localhost:5173/auth/login`; any submitted credentials continue to the dashboard.
 
+To run only one service:
+
+```bash
+pnpm dev:web
+pnpm dev:api
+```
+
+## Production build
+
+```bash
+pnpm build
+pnpm preview
+```
+
+## Tests and quality checks
+
+```bash
+pnpm test
+pnpm lint
+pnpm test:e2e
+pnpm storybook
+```
+
+The first Playwright run may require `pnpm exec playwright install chromium`.
+
+## Replace the dummy API
+
+Copy `.env.example` to `.env` and update:
+
+```dotenv
+VITE_API_URL=https://your-api.example.com
+```
+
+All HTTP calls are centralized in `src/api/client.ts`. Keep or adapt the exported response types there, then replace the query functions with your real endpoints. The current contract is documented in `openapi.yaml`; `db.json` contains the editable local data used by `json-server`.
+
+For production authentication, replace the demo submit handler in `src/pages/PublicPages.tsx` with your OAuth2/OIDC provider, store tokens in secure HTTP-only cookies, and attach the session through an Axios interceptor. A custom role/action permission starter is provided in `src/auth/permissions.ts`.
+
+## Monitoring and analytics
+
+The environment contract includes `VITE_SENTRY_DSN` and `VITE_POSTHOG_KEY`. `src/lib/monitoring.ts` initializes Sentry and PostHog only when their respective production keys are present. No monitoring or analytics data is sent by the starter application without those variables.
+
+## Project structure
+
+```text
+src/
+  api/             API client and response contracts
+  auth/            Role and permission rules
+  components/      Layout and shadcn-style UI primitives
+  data/            Navigation and route catalog
+  lib/             Utilities and monitoring hook
+  pages/           Feature and route-family screens
+  store/           Zustand application state
+db.json            Dummy REST API data
+openapi.yaml       API contract
+e2e/               Playwright smoke tests
 ```

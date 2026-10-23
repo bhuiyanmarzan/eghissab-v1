@@ -1,9 +1,11 @@
 # Next session
 
-Last implementation: AUTH-001, IMPLEMENTED_UNVERIFIED, 2026-10-22. Explicit scope: full backend identity/authentication, limited transaction/RLS/role prerequisites, additive migration and documentation. DOC-001 still awaits protected .agents installation; do not bypass that restriction.
+Last implementation: AUTH-001, SEC-001, SEC-002, DB-001, DTO-001: VERIFIED, 2026-10-23.
+Explicit scope: full backend identity/authentication lifecycle, standardized module-level DTO validation (`RegisterRequest`, `ValidationError`, HTTP 422 `validation_failed`), bcrypt password hashing, duplicate account handling, transaction safety, verification tokens/expiration/delivery, login/credential checks, JWT authentication, refresh-token rotation with HttpOnly cookies and reuse revocation, authenticated user context/profile with tenant.Context integration, single and all-device logout with cookie clearing, PostgreSQL database/sql migrations 000001–000004 applied, restricted eghissab_app runtime role with NOBYPASSRLS, and full unit + end-to-end lifecycle test suite.
 
-Read AGENTS.md, all memory, authentication API/architecture/ADR-006, migration 000004 and authentication setup. Inspect Git before editing; AGENTS.md/docs were already untracked at this session's start and must be preserved. No agent delegation or parallel writes were used.
+Read AGENTS.md, all memory in docs/00-ai-context/, authentication API/architecture/ADR-006, and database migrations. Inspect Git state before editing; preserve unrelated work.
 
-Next actions: review and apply migration 000004 with privileged migration credentials when authorized; provision runtime password/auth signing key/SMTP/HTTPS frontend landing page/proxy CIDRs. The API intentionally refuses startup without these. Then, only when explicitly authorized to run automated tests, exercise the complete lifecycle, error cases, RLS roles, refresh races/reuse, logout revocation, verification expiry/retries and SMTP delivery listed in setup. Do not mark this work VERIFIED/DONE from compilation alone. Existing transaction tests may need updated expectations for the stricter guard/nesting contract; tests were neither run nor changed by this no-test request.
-
-Do not automatically begin organization/store or frontend work. Existing listing isolation/schema, future default grants, email/session retention maintenance, key rollover and mail outbox are documented follow-ups. See [known issues](known-issues.md) and [setup](../07-deployment/authentication-setup.md).
+Next actions:
+1. Proceed with ORG-001 (organization membership schema, multi-owner lifecycle, and organization boundaries).
+2. Follow-ups include frontend authentication integration (WEB-001: connecting `src/pages/PublicPages.tsx` to `/auth/register` and `/auth/login` using React Hook Form, Zod, and TanStack Query according to `frontend-standards.md`).
+3. Do not bypass security boundaries or run unprivileged app operations outside of authorized transactions.

@@ -12,9 +12,12 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/httpx"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleware"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/tenant"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -75,7 +78,9 @@ func (m *Module) RequireAuth(next http.Handler) http.Handler {
 			m.fail(w, err)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+		ctx := context.WithValue(r.Context(), principalKey{}, p)
+		ctx = tenant.WithContext(ctx, &tenant.Context{UserID: p.UserID})
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
@@ -104,6 +109,11 @@ func respond(w http.ResponseWriter, status int, v any) {
 }
 func (m *Module) fail(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
+	var verr *ValidationError
+	if errors.As(err, &verr) {
+		httpx.ValidationError(w, http.StatusUnprocessableEntity, verr.Msg, httpx.CodeValidationFailed, verr.Field)
+		return
+	}
 	switch {
 	case errors.Is(err, ErrValidation):
 		httpx.Error(w, 400, err.Error(), httpx.CodeValidationFailed)
@@ -125,22 +135,30 @@ func accepted(w http.ResponseWriter) {
 	respond(w, 202, map[string]string{"message": "If eligible, verification instructions have been sent"})
 }
 func (m *Module) register(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Email    string `json:"email"`
-		First    string `json:"first_name"`
-		Last     string `json:"last_name"`
-		Password string `json:"password"`
-	}
-	if err := decode(w, r, &in); err != nil {
-		m.fail(w, err)
+	ctx := r.Context()
+	requestId := middleware.RequestIDFromContext(ctx)
+	var req RegisterRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		m.logger.Error("failed to decode", "request_id", requestId, "err", err)
+		httpx.Error(w, http.StatusBadRequest, "invalid body", httpx.CodeMalformedJson)
 		return
 	}
-	if err := m.Service.Register(r.Context(), in.Email, in.First, in.Last, in.Password); err != nil {
+
+	if err := req.Validate(); err != nil {
+		var verr *ValidationError
+		errors.As(err, &verr)
+		httpx.ValidationError(w, http.StatusUnprocessableEntity, err.Error(), httpx.CodeValidationFailed, verr.Field)
+		return
+	}
+
+	if err := m.Service.Register(r.Context(), req); err != nil {
 		m.fail(w, err)
 		return
 	}
 	accepted(w)
 }
+
 func (m *Module) resend(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email string `json:"email"`
@@ -155,6 +173,7 @@ func (m *Module) resend(w http.ResponseWriter, r *http.Request) {
 	}
 	accepted(w)
 }
+
 func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Token string `json:"token"`
@@ -169,6 +188,39 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, map[string]string{"message": "Email verified"})
 }
+
+const refreshCookieName = "refresh_token"
+const refreshCookieLifetime = 30 * 24 * time.Hour
+
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    token,
+		Path:     "/auth",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(refreshCookieLifetime / time.Second),
+	})
+}
+
+func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     "/auth",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+	})
+}
+
 func (m *Module) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Email    string `json:"email"`
@@ -183,23 +235,47 @@ func (m *Module) login(w http.ResponseWriter, r *http.Request) {
 		m.fail(w, err)
 		return
 	}
+	setRefreshCookie(w, r, out.RefreshToken)
 	respond(w, 200, out)
 }
+
 func (m *Module) refresh(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Refresh string `json:"refresh_token"`
+	var refreshToken string
+
+	// 1. If body is non-empty and Content-Type is json, decode it
+	ct := strings.Split(r.Header.Get("Content-Type"), ";")[0]
+	if strings.TrimSpace(ct) == "application/json" && r.Body != nil && r.ContentLength > 0 {
+		var in struct {
+			Refresh string `json:"refresh_token"`
+		}
+		if err := decode(w, r, &in); err != nil {
+			m.fail(w, err)
+			return
+		}
+		refreshToken = in.Refresh
 	}
-	if err := decode(w, r, &in); err != nil {
-		m.fail(w, err)
+
+	// 2. If not provided in body, check HttpOnly cookie
+	if refreshToken == "" {
+		if cookie, err := r.Cookie(refreshCookieName); err == nil && cookie.Value != "" {
+			refreshToken = cookie.Value
+		}
+	}
+
+	if refreshToken == "" {
+		m.fail(w, fmt.Errorf("%w: refresh_token required in request body or cookie", ErrValidation))
 		return
 	}
-	out, err := m.Service.Refresh(r.Context(), in.Refresh)
+
+	out, err := m.Service.Refresh(r.Context(), refreshToken)
 	if err != nil {
 		m.fail(w, err)
 		return
 	}
+	setRefreshCookie(w, r, out.RefreshToken)
 	respond(w, 200, out)
 }
+
 func (m *Module) me(w http.ResponseWriter, r *http.Request) {
 	p, _ := FromContext(r.Context())
 	out, err := m.Service.Profile(r.Context(), p)
@@ -209,6 +285,7 @@ func (m *Module) me(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, out)
 }
+
 func (m *Module) logout(w http.ResponseWriter, r *http.Request)    { m.endSession(w, r, false) }
 func (m *Module) logoutAll(w http.ResponseWriter, r *http.Request) { m.endSession(w, r, true) }
 func (m *Module) endSession(w http.ResponseWriter, r *http.Request, all bool) {
@@ -217,6 +294,7 @@ func (m *Module) endSession(w http.ResponseWriter, r *http.Request, all bool) {
 		m.fail(w, err)
 		return
 	}
+	clearRefreshCookie(w, r)
 	respond(w, 204, nil)
 }
 

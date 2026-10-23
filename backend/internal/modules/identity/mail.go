@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -11,6 +12,29 @@ import (
 	"strings"
 	"time"
 )
+
+// LogMailer delivers verification tokens by writing them to structured logs (for development and tests).
+type LogMailer struct {
+	logger          *slog.Logger
+	verificationURL string
+}
+
+// NewLogMailer constructs a logger-based verification mailer.
+func NewLogMailer(verificationURL string, logger *slog.Logger) *LogMailer {
+	if verificationURL == "" {
+		verificationURL = "https://localhost:8080/verify-email"
+	}
+	return &LogMailer{logger: logger, verificationURL: verificationURL}
+}
+
+func (m *LogMailer) SendVerification(ctx context.Context, to, token string) error {
+	if _, err := normalizeEmail(to); err != nil {
+		return err
+	}
+	link := m.verificationURL + "?token=" + token
+	m.logger.Info("verification email sent (development)", "recipient", to, "verification_url", link)
+	return nil
+}
 
 type SMTPConfig struct{ Address, Username, Password, From, VerificationURL string }
 type SMTPMailer struct {

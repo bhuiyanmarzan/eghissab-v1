@@ -71,15 +71,45 @@ func main() {
 	if err != nil {
 		log.Fatalf("identity database configuration: %v", err)
 	}
-	mailer, err := identity.NewSMTPMailer(identity.SMTPConfig{
-		Address: os.Getenv("SMTP_ADDR"), Username: os.Getenv("SMTP_USERNAME"), Password: os.Getenv("SMTP_PASSWORD"),
-		From: os.Getenv("SMTP_FROM"), VerificationURL: os.Getenv("AUTH_VERIFICATION_URL"),
-	})
-	if err != nil {
-		log.Fatalf("identity mail configuration: %v", err)
+	var mailer identity.VerificationMailer
+	smtpAddr := os.Getenv("SMTP_ADDR")
+	if smtpAddr != "" {
+		m, err := identity.NewSMTPMailer(identity.SMTPConfig{
+			Address:         smtpAddr,
+			Username:        os.Getenv("SMTP_USERNAME"),
+			Password:        os.Getenv("SMTP_PASSWORD"),
+			From:            os.Getenv("SMTP_FROM"),
+			VerificationURL: os.Getenv("AUTH_VERIFICATION_URL"),
+		})
+		if err != nil {
+			log.Fatalf("identity mail configuration: %v", err)
+		}
+		mailer = m
+	} else if cfg.Env == "development" {
+		logger.Warn("SMTP_ADDR not configured; using LogMailer for local development")
+		mailer = identity.NewLogMailer(os.Getenv("AUTH_VERIFICATION_URL"), logger)
+	} else {
+		log.Fatalf("identity mail configuration: SMTP_ADDR is required in %s", cfg.Env)
 	}
+
+	signingKey := os.Getenv("AUTH_SIGNING_KEY")
+	issuer := os.Getenv("AUTH_ISSUER")
+	if issuer == "" {
+		issuer = "eghissab-v1"
+	}
+	audience := os.Getenv("AUTH_AUDIENCE")
+	if audience == "" {
+		audience = "eghissab-v1-client"
+	}
+	if signingKey == "" && cfg.Env == "development" {
+		signingKey = "ZGV2ZWxvcG1lbnQtYXV0aC1zaWduaW5nLWtleS0zMmJ5dGVzISE="
+		logger.Warn("AUTH_SIGNING_KEY not set; using development fallback key")
+	}
+
 	identityModule, err := identity.NewModule(txManager, identity.Config{
-		SigningKeyBase64: os.Getenv("AUTH_SIGNING_KEY"), Issuer: os.Getenv("AUTH_ISSUER"), Audience: os.Getenv("AUTH_AUDIENCE"),
+		SigningKeyBase64:  signingKey,
+		Issuer:            issuer,
+		Audience:          audience,
 		TrustedProxyCIDRs: os.Getenv("AUTH_TRUSTED_PROXY_CIDRS"),
 	}, mailer, logger)
 	if err != nil {
