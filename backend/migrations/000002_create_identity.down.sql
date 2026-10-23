@@ -20,7 +20,7 @@ DROP TABLE IF EXISTS identity.user_identities;
 
 DROP INDEX IF EXISTS identity.idx_contacts_user;
 DROP INDEX IF EXISTS identity.uq_primary_user_contact;
-DROP INDEX IF EXISTS identity.uq_verified_contacts;
+DROP INDEX IF EXISTS identity.uq_contact_type_value;
 DROP TABLE IF EXISTS identity.user_contacts;
 
 DROP TABLE IF EXISTS identity.users;

@@ -22,9 +22,10 @@ CREATE TABLE identity.user_contacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX uq_verified_contacts
-ON identity.user_contacts(type, normalized_value)
-WHERE verified_at IS NOT NULL;
+-- Unconditional uniqueness: no two rows may share the same type + value,
+-- regardless of verification status. Case-insensitive for email safety.
+CREATE UNIQUE INDEX uq_contact_type_value
+ON identity.user_contacts(type, lower(normalized_value));
 
 CREATE UNIQUE INDEX uq_primary_user_contact
 ON identity.user_contacts(user_id, type)

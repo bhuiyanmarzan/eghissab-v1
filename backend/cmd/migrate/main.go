@@ -37,6 +37,13 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Println("migration down applied")
+
+	case "down-all":
+		if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+			log.Fatal(err)
+		}
+		log.Println("migration down all applied")
+
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

@@ -15,7 +15,8 @@ DO $$ BEGIN
 END $$;
 ALTER TABLE identity.user_sessions ADD COLUMN rotated_at timestamptz;
 CREATE INDEX idx_session_family ON identity.user_sessions(token_family_id);
-CREATE UNIQUE INDEX uq_verified_email_normalized ON identity.user_contacts(lower(normalized_value)) WHERE type='email' AND verified_at IS NOT NULL;
+-- uq_verified_email_normalized removed: uq_contact_type_value (000002) already
+-- enforces (type, lower(normalized_value)) uniqueness unconditionally.
 CREATE INDEX idx_contact_email_lookup ON identity.user_contacts(lower(normalized_value)) WHERE type='email';
 CREATE TABLE identity.auth_attempts (
  key_hash text PRIMARY KEY,
