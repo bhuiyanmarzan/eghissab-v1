@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -55,12 +56,13 @@ func main() {
 	}
 	defer db.Close()
 
-	logger.Info("database connected",
-		"max_open_conns", cfg.DBMaxOpenConns,
-		"max_idle_conns", cfg.DBMaxIdleConns,
-		"conn_max_lifetime", cfg.DBConnMaxLifetime.String(),
-		"conn_max_idle_time", cfg.DBConnMaxIdleTime.String(),
-	)
+	// logger.Info("database connected",
+	// 	"max_open_conns", cfg.DBMaxOpenConns,
+	// 	"max_idle_conns", cfg.DBMaxIdleConns,
+	// 	"conn_max_lifetime", cfg.DBConnMaxLifetime.String(),
+	// 	"conn_max_idle_time", cfg.DBConnMaxIdleTime.String(),
+	// )
+	fmt.Println("database connected")
 
 	// Initialize transaction & tenant security manager
 	txManager := database.NewTxManager(db)
@@ -86,7 +88,7 @@ func main() {
 		}
 		mailer = m
 	} else {
-		logger.Warn("SMTP_ADDR not configured; using LogMailer (verification links will be logged)")
+		// logger.Warn("SMTP_ADDR not configured; using LogMailer (verification links will be logged)")
 		mailer = identity.NewLogMailer(os.Getenv("AUTH_VERIFICATION_URL"), logger)
 	}
 
@@ -126,7 +128,17 @@ func main() {
 	listingModule.RegisterRoutes(mux)
 
 	// Global middlewares
-	handler := middleware.RequestId(mux)
+	rateLimiter, err := middleware.NewIPRateLimiter(middleware.RateLimiterConfig{
+		RequestsPerMinute: cfg.RateLimitRPM,
+		Burst:             cfg.RateLimitBurst,
+		TrustedProxyCIDRs: cfg.TrustedProxyCIDRs,
+		SkipPaths:         []string{"/healthz"},
+	})
+	if err != nil {
+		log.Fatalf("rate limiter configuration: %v", err)
+	}
+
+	handler := middleware.RequestId(rateLimiter.Limit(mux))
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -140,9 +152,34 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Start rate limiter memory cleanup
+	rateLimiter.StartCleanup(ctx, 5*time.Minute)
+
+	// Background worker: Periodic cleanup for expired auth_attempts (Phase 1)
+	go func() {
+		pruneTicker := time.NewTicker(1 * time.Hour)
+		defer pruneTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-pruneTicker.C:
+				pruneCtx, pruneCancel := context.WithTimeout(context.Background(), 15*time.Second)
+				deleted, err := identityModule.Service.PruneAttempts(pruneCtx, 24*time.Hour)
+				pruneCancel()
+				if err != nil {
+					logger.Error("failed to prune expired auth attempts", "err", err)
+				} else if deleted > 0 {
+					logger.Info("pruned expired auth attempts", "deleted_count", deleted)
+				}
+			}
+		}
+	}()
+
 	serverErrors := make(chan error, 1)
 	go func() {
-		logger.Info("server is listening", "addr", srv.Addr)
+		// logger.Info("server is listening", "addr", srv.Addr)
+		fmt.Println("server is listening", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErrors <- err
 		}

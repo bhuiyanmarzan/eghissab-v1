@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/google/uuid"
@@ -26,6 +27,14 @@ func (r *Repository) budget(ctx context.Context, key string) (bool, error) {
 		return q.QueryRowContext(ctx, `SELECT identity.auth_budget($1)`, digest(key)).Scan(&ok)
 	})
 	return ok, err
+}
+func (r *Repository) pruneAttempts(ctx context.Context, olderThan time.Duration) (int, error) {
+	var count int
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		intervalStr := fmt.Sprintf("%d seconds", int(olderThan.Seconds()))
+		return q.QueryRowContext(ctx, `SELECT identity.auth_prune_attempts($1::interval)`, intervalStr).Scan(&count)
+	})
+	return count, err
 }
 func (r *Repository) register(ctx context.Context, email, first, last, password string, id uuid.UUID, hash string) (bool, error) {
 	var user sql.NullString

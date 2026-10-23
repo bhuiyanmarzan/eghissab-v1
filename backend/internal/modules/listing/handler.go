@@ -36,9 +36,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(ToListingResponses(listings))
+	httpx.JSON(w, http.StatusOK, ToListingResponses(listings))
 }
 
 // Create handles POST /listings requests.
@@ -67,9 +65,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("listing created", "request_id", requestId, "listing_id", out.ID)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(out)
+	httpx.JSON(w, http.StatusCreated, out)
 }
 
 // Delete handles DELETE /listings/{id} requests.
@@ -84,5 +80,5 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	httpx.NoContent(w)
 }

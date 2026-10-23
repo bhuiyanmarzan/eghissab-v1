@@ -17,6 +17,9 @@ type Config struct {
 	DBMaxIdleConns       int
 	DBConnMaxLifetime    time.Duration
 	DBConnMaxIdleTime    time.Duration
+	RateLimitRPM         int
+	RateLimitBurst       int
+	TrustedProxyCIDRs    string
 }
 
 func MustLoad() Config {
@@ -53,6 +56,9 @@ func MustLoad() Config {
 		DBMaxIdleConns:       getEnvAsInt("DB_MAX_IDLE_CONNS", 25),
 		DBConnMaxLifetime:    getEnvAsDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
 		DBConnMaxIdleTime:    getEnvAsDuration("DB_CONN_MAX_IDLE_TIME", 5*time.Minute),
+		RateLimitRPM:         getEnvAsInt("RATE_LIMIT_RPM", 120),
+		RateLimitBurst:       getEnvAsInt("RATE_LIMIT_BURST", 30),
+		TrustedProxyCIDRs:    os.Getenv("AUTH_TRUSTED_PROXY_CIDRS"),
 	}
 }
 

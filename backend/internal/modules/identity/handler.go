@@ -99,15 +99,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	}
 	return nil
 }
-func respond(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if v != nil {
-		_ = json.NewEncoder(w).Encode(v)
-	}
-}
+// respond is removed; use httpx.JSON or httpx.NoContent directly.
 func (m *Module) fail(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	var verr *ValidationError
@@ -132,14 +124,16 @@ func (m *Module) fail(w http.ResponseWriter, err error) {
 		httpx.Error(w, 500, "Internal server error", httpx.CodeInternalError)
 	}
 }
+
 /*
-func accepted(w http.ResponseWriter) {
-	respond(w, 202, map[string]string{"message": "If eligible, verification instructions have been sent"})
-}
+	func accepted(w http.ResponseWriter) {
+		respond(w, 202, map[string]string{"message": "If eligible, verification instructions have been sent"})
+	}
 */
 func accepted(w http.ResponseWriter) {
 	// Verification email instructions commented out - direct registration
-	respond(w, 200, map[string]string{"message": "Registration successful"})
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Registration successful"})
 }
 func (m *Module) register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -193,7 +187,7 @@ func (m *Module) verify(w http.ResponseWriter, r *http.Request) {
 		m.fail(w, err)
 		return
 	}
-	respond(w, 200, map[string]string{"message": "Email verified"})
+	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Email verified"})
 }
 
 const refreshCookieName = "refresh_token"
@@ -260,7 +254,8 @@ func (m *Module) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setRefreshCookie(w, r, out.RefreshToken)
-	respond(w, 200, out)
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (m *Module) refresh(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +290,8 @@ func (m *Module) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setRefreshCookie(w, r, out.RefreshToken)
-	respond(w, 200, out)
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (m *Module) me(w http.ResponseWriter, r *http.Request) {
@@ -305,7 +301,7 @@ func (m *Module) me(w http.ResponseWriter, r *http.Request) {
 		m.fail(w, err)
 		return
 	}
-	respond(w, 200, out)
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (m *Module) logout(w http.ResponseWriter, r *http.Request)    { m.endSession(w, r, false) }
@@ -317,18 +313,18 @@ func (m *Module) endSession(w http.ResponseWriter, r *http.Request, all bool) {
 		return
 	}
 	clearRefreshCookie(w, r)
-	respond(w, 204, nil)
+	httpx.NoContent(w)
 }
 
 func (m *Module) limit(action string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, err := m.clientIP(r)
 		if err != nil {
-			m.fail(w, ErrInvalid)
+			httpx.Error(w, http.StatusBadRequest, "invalid request", httpx.CodeRateLimited)
 			return
 		}
 		if err = m.Service.budget(r.Context(), "ip:"+action+":"+ip); err != nil {
-			m.fail(w, err)
+			httpx.Error(w, http.StatusTooManyRequests, "too many requests", httpx.CodeRateLimited)
 			return
 		}
 		next.ServeHTTP(w, r)

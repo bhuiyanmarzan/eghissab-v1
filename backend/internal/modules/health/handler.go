@@ -2,11 +2,11 @@ package health
 
 import (
 	"net/http"
+
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/httpx"
 )
 
 // Handler serves healthcheck probe responses.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status": "hot reload working now"}`))
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

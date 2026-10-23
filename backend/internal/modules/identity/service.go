@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/google/uuid"
@@ -42,6 +43,12 @@ func (s *Service) budget(ctx context.Context, key string) error {
 		return ErrLimited
 	}
 	return nil
+}
+
+func (s *Service) PruneAttempts(ctx context.Context, olderThan time.Duration) (int, error) {
+	return inTx(s, ctx, func(ctx context.Context) (int, error) {
+		return s.repo.pruneAttempts(ctx, olderThan)
+	})
 }
 func (s *Service) Register(ctx context.Context, req RegisterRequest) error {
 	if err := req.Validate(); err != nil {

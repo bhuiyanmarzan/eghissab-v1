@@ -20,7 +20,8 @@ const (
 )
 
 type errorEnvelop struct {
-	Error errorPayload `json:"error"`
+	Success bool         `json:"success"`
+	Error   errorPayload `json:"error"`
 }
 
 type errorPayload struct {
@@ -33,21 +34,18 @@ func Error(w http.ResponseWriter, status int, message string, code Code) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	// _ = json.NewEncoder(w).Encode(map[string]string{"message": message, "code": code})
-	_ = json.NewEncoder(w).Encode(errorEnvelop{Error: errorPayload{
-		Code:    code,
-		Message: message,
-	}})
+	_ = json.NewEncoder(w).Encode(errorEnvelop{
+		Success: false,
+		Error:   errorPayload{Code: code, Message: message},
+	})
 }
 
 func ValidationError(w http.ResponseWriter, status int, message string, code Code, field string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	// _ = json.NewEncoder(w).Encode(map[string]string{"message": message, "code": code})
-	_ = json.NewEncoder(w).Encode(errorEnvelop{Error: errorPayload{
-		Code:    code,
-		Message: message,
-		Field:   field,
-	}})
+	_ = json.NewEncoder(w).Encode(errorEnvelop{
+		Success: false,
+		Error:   errorPayload{Code: code, Message: message, Field: field},
+	})
 }

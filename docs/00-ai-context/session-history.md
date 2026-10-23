@@ -217,5 +217,33 @@ Related: [Documentation index](../README.md).
   - Workspace `pnpm type-check` (`turbo run type-check`) passed 100% across all 7 workspace packages.
   - State: `IMPLEMENTED_UNVERIFIED` (tests deferred per standing policy).
 
+## 2026-10-23 — Rate Limiting Architecture Analysis & Phase 1/2 Enhancements
+- User requested an explanation of how rate limiting works in the backend application and invoked /plan.
+- Researched the entire rate limiting implementation across HTTP middleware, service domain logic, repository queries, and PostgreSQL stored procedures (`identity.auth_budget`).
+- Generated detailed design and roadmap artifact `rate_limiting_architecture_and_plan.md` with `RequestFeedback: true` detailing the dual-layer defense (IP middleware + email service budget), SHA-256 key hashing, PostgreSQL atomic fixed-window engine, and trusted proxy traversal. User approved the artifact.
+- User selected executing Phase 1 (database attempts pruning) and Phase 2 (global IP rate limiting middleware).
+- Implementation:
+  1. Migration 000006 (`backend/migrations/000006_auth_prune_and_cleanup.up.sql` / `.down.sql`):
+     - Granted `DELETE` on `identity.auth_attempts` to role `eghissab_identity_executor`.
+     - Created `identity.auth_prune_attempts(p_older_than interval DEFAULT interval '24 hours')` as `SECURITY DEFINER` returning the number of pruned rows.
+     - Granted execute permission on the function to runtime role `eghissab_app`.
+     - Applied migration to live PostgreSQL (`migration up applied`).
+  2. Identity Repository & Service:
+     - Added `r.pruneAttempts(ctx, olderThan time.Duration)` to `backend/internal/modules/identity/repository.go`.
+     - Added `Service.PruneAttempts(ctx, olderThan time.Duration)` to `backend/internal/modules/identity/service.go`.
+  3. Global IP Rate Limiter Middleware:
+     - Created `backend/internal/middleware/ratelimit.go` implementing thread-safe in-memory token-bucket rate limiting (`IPRateLimiter`).
+     - Features configurable rate and burst, proxy hop traversal (`resolveClientIP`) matching trusted CIDRs, path bypass (e.g. `/healthz`), and periodic client memory cleanup (`StartCleanup`).
+     - Rejections return HTTP 429 (`httpx.CodeRateLimited`), `Retry-After` header, and `Cache-Control: no-store`.
+  4. Configuration & API Composition:
+     - Added `RateLimitRPM`, `RateLimitBurst`, and `TrustedProxyCIDRs` to `backend/internal/config/config.go` and `.env.sample`.
+     - In `backend/cmd/api/main.go`, initialized `IPRateLimiter`, wired it into the global middleware chain (`middleware.RequestId(rateLimiter.Limit(mux))`), and launched a periodic background goroutine running `Service.PruneAttempts` every 1 hour (pruning records older than 24 hours).
+- Verification:
+  - Applied migration 000006 to live database via `cmd/migrate`.
+  - Compiled backend via `go build ./...` (0 errors, 0 warnings).
+  - Built production binaries `bin/api/main` and `bin/migrate` cleanly.
+  - Executed existing Go tests (`go test ./...` in `database`, `identity`, `listing`), all 100% green.
+  - State: `IMPLEMENTED_UNVERIFIED` (new tests deferred per standing policy).
+
 
 
