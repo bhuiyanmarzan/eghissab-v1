@@ -152,6 +152,155 @@ func (r *Repository) profile(ctx context.Context, p Principal) (Profile, error) 
 	return out, err
 }
 
+type idResult struct {
+	id uuid.UUID
+	ok bool
+}
+
+func (r *Repository) googleLogin(ctx context.Context, subject string, sessionID, familyID uuid.UUID, refresh string) (idResult, error) {
+	var uid sql.NullString
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_google_login($1,$2,$3,$4)`, subject, sessionID, familyID, digest(refresh)).Scan(&uid)
+	})
+	if err != nil {
+		return idResult{}, err
+	}
+	if !uid.Valid {
+		return idResult{}, nil
+	}
+	u, err := uuid.Parse(uid.String)
+	return idResult{id: u, ok: err == nil}, err
+}
+
+func (r *Repository) googleRegister(ctx context.Context, email, first, last, subject string, sessionID, familyID uuid.UUID, refresh string) (idResult, error) {
+	var uid sql.NullString
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_google_register($1,$2,$3,$4,$5,$6,$7)`, email, first, last, subject, sessionID, familyID, digest(refresh)).Scan(&uid)
+	})
+	if err != nil {
+		return idResult{}, err
+	}
+	if !uid.Valid {
+		return idResult{}, nil
+	}
+	u, err := uuid.Parse(uid.String)
+	return idResult{id: u, ok: err == nil}, err
+}
+
+func (r *Repository) googleLinkChallenge(ctx context.Context, email string, challengeID uuid.UUID, challengeHash string) (idResult, error) {
+	var uid sql.NullString
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_google_link_challenge($1,$2,$3)`, email, challengeID, challengeHash).Scan(&uid)
+	})
+	if err != nil {
+		return idResult{}, err
+	}
+	if !uid.Valid {
+		return idResult{}, nil
+	}
+	u, err := uuid.Parse(uid.String)
+	return idResult{id: u, ok: err == nil}, err
+}
+
+func (r *Repository) googleLinkConfirm(ctx context.Context, challengeID uuid.UUID, challengeHash string, userID uuid.UUID, subject string, sessionID, familyID uuid.UUID, refresh string) (bool, error) {
+	var ok bool
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_google_link_confirm($1,$2,$3,$4,$5,$6,$7)`, challengeID, challengeHash, userID, subject, sessionID, familyID, digest(refresh)).Scan(&ok)
+	})
+	return ok, err
+}
+
+func (r *Repository) googleLinkWithPassword(ctx context.Context, userID uuid.UUID, subject string, sessionID, familyID uuid.UUID, refresh string) (bool, error) {
+	var ok bool
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_google_link_with_password($1,$2,$3,$4,$5)`, userID, subject, sessionID, familyID, digest(refresh)).Scan(&ok)
+	})
+	return ok, err
+}
+
+func (r *Repository) userContacts(ctx context.Context, userID uuid.UUID) ([]ContactResponse, error) {
+	var contacts []ContactResponse
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		var value string
+		if err := q.QueryRowContext(ctx, `SELECT set_config('app.user_id',$1,true)`, userID.String()).Scan(&value); err != nil {
+			return err
+		}
+		rows, err := q.QueryContext(ctx, `SELECT id, type, normalized_value, is_primary, verified_at IS NOT NULL, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM identity.user_contacts WHERE user_id = $1 ORDER BY is_primary DESC, created_at ASC`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c ContactResponse
+			if err := rows.Scan(&c.ID, &c.Type, &c.Value, &c.IsPrimary, &c.Verified, &c.CreatedAt); err != nil {
+				return err
+			}
+			contacts = append(contacts, c)
+		}
+		return rows.Err()
+	})
+	return contacts, err
+}
+
+func (r *Repository) addContact(ctx context.Context, userID uuid.UUID, contactType, value string, challengeID uuid.UUID, challengeHash string) (idResult, error) {
+	var cid sql.NullString
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_add_contact($1,$2,$3,$4,$5)`, userID, contactType, value, challengeID, challengeHash).Scan(&cid)
+	})
+	if err != nil {
+		return idResult{}, err
+	}
+	if !cid.Valid {
+		return idResult{}, nil
+	}
+	id, err := uuid.Parse(cid.String)
+	return idResult{id: id, ok: err == nil}, err
+}
+
+func (r *Repository) verifyContact(ctx context.Context, challengeID uuid.UUID, challengeHash string) (bool, error) {
+	var ok bool
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_verify_contact($1,$2)`, challengeID, challengeHash).Scan(&ok)
+	})
+	return ok, err
+}
+
+func (r *Repository) setPrimaryContact(ctx context.Context, userID, contactID uuid.UUID) (bool, error) {
+	var ok bool
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_set_primary_contact($1,$2)`, userID, contactID).Scan(&ok)
+	})
+	return ok, err
+}
+
+func (r *Repository) deleteContact(ctx context.Context, userID, contactID uuid.UUID) (bool, error) {
+	var ok bool
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		return q.QueryRowContext(ctx, `SELECT identity.auth_delete_contact($1,$2)`, userID, contactID).Scan(&ok)
+	})
+	return ok, err
+}
+
+func (r *Repository) userIdentities(ctx context.Context, userID uuid.UUID) ([]IdentityResponse, error) {
+	var identities []IdentityResponse
+	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
+		rows, err := q.QueryContext(ctx, `SELECT id, provider, status, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM identity.auth_user_identities($1)`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var i IdentityResponse
+			if err := rows.Scan(&i.ID, &i.Provider, &i.Status, &i.CreatedAt); err != nil {
+				return err
+			}
+			identities = append(identities, i)
+		}
+		return rows.Err()
+	})
+	return identities, err
+}
+
 // CheckRuntime rejects administrative credentials and missing RLS before serving traffic.
 func CheckRuntime(ctx context.Context, db *sql.DB) error {
 	var safe bool

@@ -247,3 +247,150 @@ Related: [Documentation index](../README.md).
 
 
 
+
+
+## 2026-10-23 — Identity and Relationship Architecture: Google OAuth, Multi-Contact & Consumer Profiles
+- User requested implementing the Identity and Relationship Architecture Plan:
+  - One user → many contacts (`identity.user_contacts`)
+  - One user → many authentication identities (`identity.user_identities`, credentials, Google OAuth)
+  - One user → many login sessions (`identity.user_sessions`)
+  - One user → zero or one consumer profile (`consumer.consumer_profiles`)
+  - One user → many organization and store memberships
+  - Platform roles assigned independently of store roles
+  - Secure verified identity linking: Google login after email registration links to the existing user only through a verified identity-linking process.
+  - Standing instruction: do not write test cases; track as `IMPLEMENTED_UNVERIFIED`.
+- Database Migrations (PostgreSQL 17 version 7–9 applied):
+  1. `000007_consumer_profiles`: Created `consumer.consumer_profiles` with forced RLS (`user_id = app.current_user_id()`), 1:0..1 uniqueness with `identity.users`, and updated `identity.mfa_factors` column `encrypted_secret`.
+  2. `000008_google_oauth_and_identity_linking`: Added `identity.auth_google_login`, `identity.auth_google_register`, `identity.auth_google_link_challenge`, `identity.auth_google_link_confirm`, and `identity.auth_google_link_with_password` as `SECURITY DEFINER` functions owned by `eghissab_identity_executor`.
+  3. `000009_multi_contact_and_identities`: Added `identity.auth_add_contact`, `identity.auth_verify_contact`, `identity.auth_set_primary_contact`, `identity.auth_delete_contact`, and `identity.auth_user_identities` functions.
+- Backend Implementation:
+  1. `backend/internal/config/config.go`: Added `GoogleClientID`, `GoogleClientSecret`, `GoogleRedirectURL` loaded from `.env`.
+  2. `backend/internal/modules/identity/oauth_google.go`: Implemented `GoogleOAuthClient` with HMAC-signed CSRF state generation/verification, token exchange (`oauth2.googleapis.com`), and OpenID Connect userinfo retrieval.
+  3. `backend/internal/modules/identity/dto.go`: Added `GoogleLoginRequest`, `GoogleLinkConfirmRequest`, `AddContactRequest`, `VerifyContactRequest`, `ContactResponse`, and `IdentityResponse` implementing strict `Validate() error` returning field-level HTTP 422 `validation_failed`.
+  4. `backend/internal/modules/identity/repository.go` & `service.go`: Added Google login/registration/linking repository methods, challenge token validation, and multi-contact management with verified and primary status controls.
+  5. `backend/internal/modules/identity/handler.go`: Added REST routes `GET /auth/google/url`, `POST /auth/google/login`, `GET /auth/google/callback`, `POST /auth/google/link/confirm`, `GET/POST /auth/contacts`, `POST /auth/contacts/verify`, `PUT /auth/contacts/{id}/primary`, `DELETE /auth/contacts/{id}`, and `GET /auth/identities`.
+  6. `backend/internal/modules/consumer/`: Implemented complete consumer module (`dto.go`, `repository.go`, `service.go`, `handler.go`) with `GET/POST/PATCH /consumer/profile` protected by `RequireAuth`.
+  7. `backend/cmd/api/main.go`: Initialized Google OAuth client and registered consumer module routes.
+- Frontend Implementation:
+  1. `frontend/src/api/auth.ts`: Added Google OAuth methods, Account Linking confirmation, contact management, identity list, and consumer profile API calls.
+  2. `frontend/src/pages/PublicPages.tsx`: Added "Sign in with Google" button, OAuth redirect and state callback handler, and interactive account linking dialog for password or verification code confirmation.
+  3. `frontend_v1/packages/api/`: Synchronized types and API methods with Google OAuth, contact management, and consumer profile operations.
+- Verification:
+  - Database: Migrations 000007, 000008, 000009 applied cleanly to `eghissab_v1_dev` (`version: 9, dirty: false`).
+  - Backend: `go build ./...`, `bin/api`, and `bin/migrate` compiled cleanly (0 errors).
+  - Frontend: `frontend/` production bundle built cleanly with `tsc -b && vite build` (code 0).
+  - Turborepo: `frontend_v1/packages/api` type-check passed (`pnpm --filter @eghissab/api type-check`, code 0).
+  - Standing instruction honored: no test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.
+
+
+## 2026-10-23 — Organization, Store & Billing Architecture (ORG-001, STORE-001, BILL-001)
+- User requested implementing Organization, Store, and Billing Architecture according to the approved plan:
+  - One organization has many stores, each store belongs to exactly one organization.
+  - One user can belong to many organizations through `organization_memberships`.
+  - Maximum of one currently effective billing subscription per organization (historical subscriptions preserved).
+  - Multiple organization owners with guaranteed last-owner protection (BR-001 & ADR-001).
+  - One active role per user per store (BR-002 & ADR-002).
+  - Store creation gated by valid subscription entitlement/quotas (BR-004 & ADR-004).
+  - Durable, uniquely identified webhook event records (`billing_webhook_events`) to prevent duplicate transitions on retries.
+- Database Migrations:
+  1. `000010_organization_and_store`: Created `organization.organizations`, `organization.organization_memberships`, `organization.organization_roles`, `organization.organization_permissions`, `organization.organization_role_permissions`, `organization.organization_role_assignments`, `organization.organization_invitations`, `store.stores`, `store.store_roles`, and `store.store_memberships`. Created PostgreSQL trigger `organization.trg_enforce_last_active_owner`.
+  2. `000011_billing_schema`: Created `billing.plans`, `billing.plan_versions`, `billing.subscriptions`, `billing.billing_invoices`, `billing.billing_payments`, `billing.usage_records`, and `billing.billing_webhook_events`. Enforced partial unique index `uq_effective_subscription_per_org` on `(organization_id) WHERE status IN ('active', 'trialing', 'past_due')`. Seeded baseline plans (`free`, `pro`, `enterprise`).
+  3. `000012_organization_and_billing_rls`: Granted permissions to `eghissab_app`, forced RLS on all 17 tables, and created `organization.create_organization_with_owner` SECURITY DEFINER helper function.
+- Backend Implementation:
+  1. `backend/internal/modules/organization/`: `dto.go` (strict validation returning HTTP 422), `repository.go`, `service.go`, `handler.go` with 10 REST endpoints (`POST /organizations`, `GET /organizations`, `GET /organizations/{id}`, `PATCH /organizations/{id}`, `GET /organizations/{id}/members`, `POST /organizations/{id}/invitations`, `POST /organizations/invitations/accept`, `POST /organizations/{id}/transfer-ownership`, `PUT /organizations/{id}/members/{user_id}/role`, `DELETE /organizations/{id}/members/{user_id}`).
+  2. `backend/internal/modules/store/`: `dto.go`, `repository.go`, `service.go`, `handler.go` with 7 REST endpoints (`POST /stores`, `GET /stores`, `GET /stores/{id}`, `PATCH /stores/{id}`, `GET /stores/{id}/members`, `POST /stores/{id}/members`, `DELETE /stores/{id}/members/{user_id}`). Enforces BR-004 quota check and BR-002 store role isolation.
+  3. `backend/internal/modules/billing/`: `dto.go`, `repository.go`, `service.go`, `handler.go` with 7 REST endpoints (`GET /billing/plans`, `GET /billing/subscription`, `POST /billing/subscribe`, `POST /billing/cancel`, `GET /billing/invoices`, `POST /billing/usage`, `POST /billing/webhooks/{provider}`).
+  4. `backend/cmd/api/main.go`: Wired all three modules with `identityModule.RequireAuth`.
+- Frontend Integration:
+  1. API clients: `frontend/src/api/organization.ts`, `frontend/src/api/store.ts`, `frontend/src/api/billing.ts`.
+  2. Workspace packages: Synced into `frontend_v1/packages/api/` and re-exported from `index.ts`.
+  3. `frontend/src/store/useTenantStore.ts`: Updated to support multi-store and dynamic tenant selection.
+- Verification:
+  - Migrations 10, 11, 12 applied to PostgreSQL (`eghissab_v1_dev`, version 12, dirty=false).
+  - Direct PostgreSQL verification: `organization.trg_enforce_last_active_owner` confirmed blocking last-owner removal; `uq_effective_subscription_per_org` confirmed blocking duplicate effective subscriptions.
+  - Backend: `go build ./...`, `bin/api`, `bin/migrate` compiled cleanly (code 0).
+  - Frontend: `frontend/` production bundle compiled (`tsc -b && vite build`, code 0).
+  - Turborepo: `frontend_v1` full monorepo type-check passed (`turbo run type-check`, 7/7 packages green, code 0).
+  - Standing instruction honored: no test files authored; recorded as `IMPLEMENTED_UNVERIFIED`.
+
+## 2026-10-24 — Domain C: Role & Permission Management
+- Implemented **Domain C — Role and Permission Management** per user requirements and implementation plan:
+  1. Default store settings approved (timezone: `Asia/Dhaka`, currency: `BDT`, standard invoice preferences). Auto-provisioned on store creation via database trigger `store.trg_init_store_settings`.
+  2. Baseline catalog permissions seeded in `app.permissions` (`customer.manage`, `invoice.issue`, `invoice.void`, `product.read`, `product.write`, `staff.manage`, `store.manage`, `store.read`, `organization.manage`, `store.create`).
+  3. No default system roles seeded for organizations per user instruction; organizations define their own reusable store roles (`store.store_roles` + `store.store_role_permissions`).
+  4. Presentation vs. Authorization Separation: Navigation menus (`app.menus`, `app.menu_permissions`) are strictly presentation metadata. Centralized server-side authorization engine (`backend/internal/authz/authz.go`) verifies permissions on every API request. Active organization owners have implicit supervisory access.
+  5. Store Staff Invitations (`store.store_invitations`): Single-use cryptographically random 32-byte tokens, SHA-256 storage, 7-day expiration. Staff acceptance binds user with assigned role enforcing BR-002 (one active role per user per store).
+  6. RLS Hardening: Centralized `SECURITY DEFINER` functions in PostgreSQL (`organization.is_org_owner`, `organization.is_org_member`, `app.has_org_permission`, `app.has_store_permission`, `app.get_store_permissions`) eliminating infinite recursion and guaranteeing non-recursive RLS evaluation across `organization_memberships`, `store_roles`, `stores`, and `billing.subscriptions`.
+  7. Endpoints Implemented in Store Module:
+     - Store Roles CRUD: `GET/POST /stores/roles`, `PUT /stores/roles/{id}/permissions`, `DELETE /stores/roles/{id}`
+     - Store Settings: `GET/PATCH /stores/{id}/settings`
+     - Permissions Catalog: `GET /stores/permissions`
+     - Store Invitations: `GET/POST /stores/{id}/invitations`, `POST /stores/invitations/accept`, `DELETE /stores/{id}/invitations/{invitation_id}`
+     - Dynamic Menus: `GET /stores/menus?store_id=...`
+  8. Frontend Clients: Updated `frontend/src/api/store.ts` and `frontend_v1/packages/api/src/store.ts`.
+- Verification:
+  - Migrations: `000013_role_and_permission_management.up.sql` applied cleanly to live PostgreSQL 17 (`bin/migrate up`, version 13, dirty=false).
+  - Live API Verification: `scratch/verify_domain_c.sh` executed against running API daemon (`bin/api/api`). All 12 verification stages passed: registration, login, permissions query, organization creation, custom role creation, store creation with auto-settings, settings update, staff invitation, invitation acceptance, dynamic menu filtering (owner: 6 menus, cashier: 4 permitted menus), and HTTP 403 Forbidden enforcement on unauthorized endpoints.
+  - Compilation: Backend (`go build ./...`, `bin/api/api`, `bin/migrate`, code 0); Frontend (`tsc -b && vite build` in `frontend/`, code 0); Monorepo (`turbo run type-check` across 10 packages / 7 tasks in `frontend_v1/`, code 0).
+  - Standing instruction honored: No test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.
+
+## 2026-10-24 — Domain D: Store Operations, Customers and Invoicing
+- Implemented **Domain D — Store Operations, Customers and Invoicing** per user requirements and approved architecture plan:
+  1. Database Schema & Migration (`000014_store_operations_and_invoicing.up.sql`):
+     - `store.products`: SKU, name, description, price, status, with `UNIQUE (store_id, sku)`.
+     - `store.inventory_locations`: Auto-provisions 'Default' location on store creation via `store.trg_init_store_location`.
+     - `store.inventory_balances`: Composite PK `(store_id, product_id, location_id)`, quantity.
+     - `store.stock_movements`: Transactional inventory control. Automatic balance synchronization via trigger `store.trg_apply_stock_movement` on insert.
+     - `store.store_customers`: Per-store customer isolation with `UNIQUE (store_id, customer_number)`, auto-generated identifiers (`CUST-XXXXX`), and optional consumer profile linkage.
+     - `invoice.invoices`: Isolated per store (`UNIQUE (store_id, invoice_number)`), lifecycle states (`draft`, `issued`, `partially_paid`, `paid`, `voided`, `cancelled`), financial totals, dates, and notes.
+     - `invoice.invoice_items`: Immutable snapshots of description, SKU, quantity, unit price, discounts, and taxes. Protected against post-issue modifications via trigger `invoice.trg_protect_issued_invoice_items`.
+     - `invoice.trg_protect_issued_invoice`: Protects financial totals of issued invoices from mutation.
+     - `invoice.invoice_decisions`: Customer portal dispute/approval records.
+     - `invoice.invoice_events`: Detailed audit trail for all invoice lifecycle events.
+     - `invoice.invoice_payments`: Payment recording (`cash`, `card`, `mobile_banking`, `bank_transfer`, `credit_balance`), overpayment prevention, and automatic invoice status synchronization (`partially_paid` / `paid`).
+     - `invoice.invoice_adjustments`: Credit and debit note records aligning with tax and accounting standards without silently rewriting issued invoice history.
+     - Applied migration to live PostgreSQL 17 (`eghissab_v1_dev`, schema version 14, dirty=false) with forced RLS and app role grants.
+  2. Backend Implementation:
+     - `backend/internal/modules/store/`: Updated DTOs, repository, and service with products, inventory locations, inventory balances, stock movements, and store customers. Added HTTP endpoints (`GET/POST /stores/{id}/products`, `GET/PATCH /stores/{id}/products/{product_id}`, `GET/POST /stores/{id}/locations`, `GET /stores/{id}/inventory`, `POST /stores/{id}/inventory/movements`, `GET/POST /stores/{id}/customers`, `GET/PATCH /stores/{id}/customers/{customer_id}`).
+     - `backend/internal/modules/invoice/`: New module with `dto.go`, `repository.go`, `service.go`, and `handler.go`. Implemented invoice draft creation, update, atomic sequential invoice numbering from `store_settings`, invoice issuance with automatic stock deductions, void with reversing movements, payment recording, credit/debit notes, and audit event logging.
+     - `backend/cmd/api/main.go`: Initialized and registered the `invoice` module.
+  3. Frontend Integration:
+     - `frontend/src/api/store.ts`: Added Product, Inventory, and Store Customer TypeScript interfaces and API methods.
+     - `frontend/src/api/invoice.ts`: Created Invoice, Payment, Adjustment, Decision, and Event TypeScript interfaces and API methods.
+     - Synced API modules into `frontend_v1/packages/api/src/` and updated `index.ts`.
+     - Resolved naming collision with `listBillingInvoices` in `billing.ts`.
+  4. Live Verification:
+     - Ran `scratch/verify_domain_d.sh` against live PostgreSQL 17 and running API daemon (`bin/api/api`).
+     - All 19 test stages passed: user registration & login, store creation, default location verification, products creation with initial stock, customer creation, invoice draft calculation, issuance with sequential numbering, automatic inventory deduction (50 -> 48 and 30 -> 29), immutability blocking updates with 409 Conflict, partial payment, final payment, overpayment rejection, credit note adjustment preserving invoice totals, void lifecycle with stock reversal (43 -> 48), audit trail logging, and RBAC 403 Forbidden enforcement on unauthorized endpoints.
+  5. Compilation:
+     - Backend: `go build ./...`, `bin/api/api` compiled cleanly (exit code 0).
+     - Frontend: `tsc -b && vite build` in `frontend/` succeeded with 0 errors (exit code 0).
+     - Monorepo: `turbo run type-check` across 10 packages in `frontend_v1/` passed with 0 errors (exit code 0).
+  6. Standing instruction honored: No test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.
+
+## 2026-10-24 — Domain E: Global Customers, Store Membership & Expenses Architecture Plan & Implementation
+- Completed end-to-end implementation and live verification of **Domain E — Global customers, store membership and expenses**:
+  1. Database Schema & Migrations:
+     - `backend/migrations/000015_global_customers_and_expenses.up.sql`: Created `consumer.customer_links`, `consumer.membership_requests`, `consumer.expense_categories`, `consumer.expense_entries`, and `consumer.expense_adjustments`.
+     - Established partial unique index `uq_consumer_invoice_expense ON consumer.expense_entries (consumer_id, invoice_id) WHERE invoice_id IS NOT NULL` preventing duplicate claiming of invoices into personal expenses.
+     - `backend/migrations/000016_store_active_select_policy.up.sql`: Updated RLS `store_policy` on `store.stores` allowing active storefront visibility for consumer joins while strictly enforcing owner authorization for writes.
+     - Applied migrations to live PostgreSQL 17 (`eghissab_v1_dev`, schema version 16, dirty=false) with forced RLS and app role grants.
+  2. Backend Implementation:
+     - `backend/internal/modules/consumer/dto.go`: DTO request and response structs for membership requests, customer links, cross-store consumer invoices, invoice decisions, expense categories, expense entries, and expense adjustments, implementing `Validate() error` mapping to HTTP 422 `validation_failed`.
+     - `backend/internal/modules/consumer/repository.go`: Queries for membership requests, customer links, cross-store invoice discovery with `access_from` temporal gate, expense management, and deduplication error handling (`ErrDuplicateClaim`, `ErrRequestClosed`). Added `setSessionUser` for transaction-local `app.user_id` configuration.
+     - `backend/internal/modules/consumer/service.go`: Business logic enforcing request review permissions (`customer.manage` or organization owner), customer link establishment with `access_from` temporal filter, dispute/approval decision logging with audit events, invoice expense claiming with duplicate prevention, and manual personal expense tracking.
+     - `backend/internal/modules/consumer/handler.go`: Endpoints registered for `/consumer/membership-requests`, `/stores/{id}/membership-requests`, `/stores/{id}/membership-requests/{request_id}/review`, `/consumer/customer-links`, `/stores/{id}/customer-links`, `/consumer/invoices`, `/consumer/invoices/{id}/decision`, `/consumer/invoices/{id}/claim-expense`, `/consumer/expense-categories`, `/consumer/expenses`, and `/consumer/expenses/{id}/adjustments`.
+  3. Frontend Integration:
+     - Created `frontend/src/api/consumer.ts` with comprehensive TypeScript interfaces and Axios methods for consumer profile, membership requests, customer links, cross-store invoices, expense categories, entries, and adjustments.
+     - Synced to `frontend_v1/packages/api/src/consumer.ts` and re-exported in `frontend_v1/packages/api/src/index.ts`.
+  4. Live Verification:
+     - Created and executed `scratch/verify_domain_e.sh` against live PostgreSQL 17 and running API daemon (`bin/api/api`).
+     - Passed all 22 verification stages: merchant organization & store creation, store customer creation, 2 invoices issued, consumer registration & profile creation, invoice isolation before linking (0 visible, direct GET returned 404), membership request submission (status: pending), pending request isolation verification, unauthorized review 403 rejection, merchant review and approval, request closed 409 conflict rejection, store customer link query, consumer customer links & cross-store invoice discovery, invoice dispute decision recording, expense category creation, invoice claim expense, duplicate claim 409 conflict rejection, personal manual expense creation, expense adjustment application, category filter listing, and link revocation with immediate invoice visibility termination.
+  5. Compilation:
+     - Backend: `go build ./...`, `bin/api/api`, `bin/migrate` compiled cleanly (exit code 0).
+     - Frontend: `tsc -b && vite build` in `frontend/` succeeded with 0 errors (exit code 0).
+     - Monorepo: `turbo run type-check` across 10 packages in `frontend_v1/` passed with 0 errors (exit code 0).
+  6. Standing instruction honored: No test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.
+
+
+

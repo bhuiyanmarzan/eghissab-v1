@@ -1,13 +1,25 @@
 # Next session
 
-Last implementation: AUTH-001, SEC-001, SEC-002, DB-001, DTO-001, WEB-001: VERIFIED; FRONTEND-V1-TURBO, MERCHANT-PORT & RATE-LIMITING-PHASE-1-2: IMPLEMENTED_UNVERIFIED (2026-10-23).
-Explicit scope: full backend identity/authentication lifecycle, standardized module-level DTO validation (`RegisterRequest`, `ValidationError`, HTTP 422 `validation_failed`), bcrypt password hashing, duplicate account handling, transaction safety, verification tokens/expiration/delivery, login/credential checks, JWT authentication, refresh-token rotation with HttpOnly cookies, 15-second grace period for concurrent requests (migration 000005) and reuse revocation, authenticated user context/profile with tenant.Context integration, single and all-device logout with cookie clearing, PostgreSQL database/sql migrations 000001–000006 applied (including 000006 for `identity.auth_prune_attempts`), restricted eghissab_app runtime role with NOBYPASSRLS, full unit + end-to-end lifecycle test suite, global IP rate limiter token-bucket middleware (`internal/middleware/ratelimit.go`), and background hourly pruning worker. Frontend integration (WEB-001) completed with live API client, silent refresh interceptors, in-memory Zustand auth store, route protection, and React Hook Form + Zod error mapping.
-Frontend V1 Turborepo setup (`frontend_v1/`) completed: 4 static build apps (`apps/landing`, `apps/merchant`, `apps/consumer`, `apps/admin`) and 6 shared packages (`@eghissab/ui`, `@eghissab/api`, `@eghissab/auth`, `@eghissab/config-tailwind`, `@eghissab/config-typescript`, `@eghissab/config-eslint`). Complete legacy UI, Mantis layout system (`AppShell`, `TenantSelector`, `ThemeCustomization`), commerce modules (invoices, customers, products), data tables (`@tanstack/react-table`), quick chat drawer, Bengali/English i18n, and public assets ported into `apps/merchant`. Light/dark mode toggle and customization settings drawer added to login, register, and public pages (`PublicPages.tsx`). All 7 workspace packages pass `pnpm type-check` (0 errors), and applications compile static production bundles to `dist/`.
+Last implementation: AUTH-001, SEC-001, SEC-002, DB-001, DTO-001, WEB-001: VERIFIED; AUTH-002, CON-000, ORG-001, STORE-001, BILL-001, AUTHZ-001, STORE-002, MENU-001, STORE-OPS-001, GLOBAL-CUST-001, FRONTEND-V1-TURBO, MERCHANT-PORT & RATE-LIMITING-PHASE-1-2: IMPLEMENTED_UNVERIFIED (2026-10-24).
+Explicit scope: full backend identity/authentication lifecycle, standardized module-level DTO validation (`Validate() error` returning HTTP 422 `validation_failed`), PostgreSQL database/sql migrations 000001–000016 applied, restricted eghissab_app runtime role with NOBYPASSRLS.
+Global Customers, Store Membership & Expenses (Domain E) fully implemented and verified:
+1. `consumer.customer_links`: Verified correspondence between global consumers and isolated store customers with temporal access gate (`access_from`).
+2. `consumer.membership_requests`: Separated linking request lifecycle; pending requests grant zero invoice access until explicitly reviewed and approved by authorized store staff (`customer.manage` or org owner).
+3. Cross-Store Invoice Discovery: Consumers discover invoices issued across multiple distinct merchant stores.
+4. `invoice.invoice_decisions`: Customer portal approval/dispute records audited in `invoice.invoice_events`.
+5. `consumer.expense_categories` & `consumer.expense_entries`: Personal expense management supporting both claimed invoices and manual expenses (`source_type = 'manual'`).
+6. Invoice Expense Deduplication: PostgreSQL partial unique index `uq_consumer_invoice_expense` prevents claiming the same invoice more than once, returning HTTP 409 Conflict.
+7. `consumer.expense_adjustments`: Auditable post-entry corrections without modifying base expense records.
+8. Dynamic Revocation: Revoking customer link terminates cross-store invoice visibility immediately.
+9. Migrations 000015 and 000016 applied cleanly to PostgreSQL 17 (`eghissab_v1_dev`, schema version 16, dirty=false).
+10. Frontend API clients in `frontend/src/api/consumer.ts` and `frontend_v1/packages/api/src/consumer.ts`.
+11. End-to-end live verification script `scratch/verify_domain_e.sh` executed (all 22 stages passed).
 
 Read AGENTS.md, all memory in docs/00-ai-context/, authentication API/architecture/ADR-006, frontend standards, and database migrations. Inspect Git state before editing; preserve unrelated work.
 
 Next actions:
-1. Proceed with ORG-001 (organization membership schema, multi-owner lifecycle, and organization boundaries).
-2. Wire up domain features and shared state into `frontend_v1/apps/*` as backend modules are developed.
-3. Follow-ups include organization selector UI integration in `src/components/layout/TenantSelector.tsx` (WEB-002) and billing entitlements (BILL-001).
-4. Do not bypass security boundaries or run unprivileged app operations outside of authorized transactions.
+1. Implement Merchant and Consumer UI screens in `frontend_v1` using the new `@eghissab/api` store, inventory, customer, invoice, and consumer endpoints.
+2. Platform roles and platform administration domain implementation if planned.
+3. Dedicated testing phase for test case authoring once implementation phase concludes.
+
+

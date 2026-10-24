@@ -20,6 +20,9 @@ type Config struct {
 	RateLimitRPM         int
 	RateLimitBurst       int
 	TrustedProxyCIDRs    string
+	GoogleClientID       string
+	GoogleClientSecret   string
+	GoogleRedirectURL    string
 }
 
 func MustLoad() Config {
@@ -59,6 +62,9 @@ func MustLoad() Config {
 		RateLimitRPM:         getEnvAsInt("RATE_LIMIT_RPM", 120),
 		RateLimitBurst:       getEnvAsInt("RATE_LIMIT_BURST", 30),
 		TrustedProxyCIDRs:    os.Getenv("AUTH_TRUSTED_PROXY_CIDRS"),
+		GoogleClientID:       os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:   os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURL:    os.Getenv("GOOGLE_REDIRECT_URL"),
 	}
 }
 

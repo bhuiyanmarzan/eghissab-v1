@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
 // RegisterRequest defines the input payload for user registration.
@@ -118,3 +120,110 @@ func validatePasswordStrength(password string) *ValidationError {
 	}
 	return nil
 }
+
+// GoogleLoginRequest defines the payload received when completing a Google OAuth sign-in.
+type GoogleLoginRequest struct {
+	Code  string `json:"code"`
+	State string `json:"state"`
+}
+
+func (req GoogleLoginRequest) Validate() error {
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		return &ValidationError{Field: "code", Msg: "authorization code is required"}
+	}
+	state := strings.TrimSpace(req.State)
+	if state == "" {
+		return &ValidationError{Field: "state", Msg: "state parameter is required"}
+	}
+	return nil
+}
+
+// GoogleLinkConfirmRequest defines the payload to confirm linking a Google account to an existing user.
+type GoogleLinkConfirmRequest struct {
+	LinkChallengeToken string `json:"link_challenge_token"`
+	Password           string `json:"password,omitempty"`
+	Code               string `json:"code,omitempty"`
+}
+
+func (req GoogleLinkConfirmRequest) Validate() error {
+	token := strings.TrimSpace(req.LinkChallengeToken)
+	if token == "" {
+		return &ValidationError{Field: "link_challenge_token", Msg: "link_challenge_token is required"}
+	}
+	pass := strings.TrimSpace(req.Password)
+	code := strings.TrimSpace(req.Code)
+	if pass == "" && code == "" {
+		return &ValidationError{Field: "password", Msg: "either password or verification code is required to authorize account link"}
+	}
+	return nil
+}
+
+// AddContactRequest defines payload to add a new contact (email or phone) to the user's account.
+type AddContactRequest struct {
+	Type  string `json:"type"`  // "email" or "phone"
+	Value string `json:"value"` // normalized contact value
+}
+
+func (req AddContactRequest) Validate() error {
+	cType := strings.ToLower(strings.TrimSpace(req.Type))
+	if cType != "email" && cType != "phone" {
+		return &ValidationError{Field: "type", Msg: "contact type must be 'email' or 'phone'"}
+	}
+	val := strings.TrimSpace(req.Value)
+	if val == "" {
+		return &ValidationError{Field: "value", Msg: "contact value is required"}
+	}
+	if cType == "email" {
+		norm := strings.ToLower(val)
+		if len(norm) > 254 || strings.ContainsAny(norm, "\r\n") || !strings.Contains(norm, "@") {
+			return &ValidationError{Field: "value", Msg: "invalid email format"}
+		}
+		a, err := mail.ParseAddress(norm)
+		if err != nil || a.Address != norm {
+			return &ValidationError{Field: "value", Msg: "invalid email format"}
+		}
+	} else {
+		// Phone number format validation: E.164-ish or standard 7-20 chars
+		if len(val) < 7 || len(val) > 20 {
+			return &ValidationError{Field: "value", Msg: "phone number must be between 7 and 20 digits"}
+		}
+		for _, r := range val {
+			if !unicode.IsDigit(r) && r != '+' && r != '-' && r != ' ' && r != '(' && r != ')' {
+				return &ValidationError{Field: "value", Msg: "phone number contains invalid characters"}
+			}
+		}
+	}
+	return nil
+}
+
+// VerifyContactRequest defines payload to verify a contact verification challenge.
+type VerifyContactRequest struct {
+	Token string `json:"token"`
+}
+
+func (req VerifyContactRequest) Validate() error {
+	if strings.TrimSpace(req.Token) == "" {
+		return &ValidationError{Field: "token", Msg: "verification token is required"}
+	}
+	return nil
+}
+
+// ContactResponse represents a user contact returned by contact endpoints.
+type ContactResponse struct {
+	ID        uuid.UUID  `json:"id"`
+	Type      string     `json:"type"`
+	Value     string     `json:"value"`
+	IsPrimary bool       `json:"is_primary"`
+	Verified  bool       `json:"verified"`
+	CreatedAt string     `json:"created_at"`
+}
+
+// IdentityResponse represents an authentication identity linked to a user account.
+type IdentityResponse struct {
+	ID        uuid.UUID `json:"id"`
+	Provider  string    `json:"provider"`
+	Status    string    `json:"status"`
+	CreatedAt string    `json:"created_at"`
+}
+

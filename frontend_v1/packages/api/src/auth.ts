@@ -5,6 +5,11 @@ import type {
   VerifyEmailRequest,
   AuthResponse,
   UserProfile,
+  IdentityLinkingRequiredResponse,
+  GoogleLoginRequest,
+  GoogleLinkConfirmRequest,
+  ContactItem,
+  LinkedIdentityItem,
 } from './types';
 
 export interface MessageResponse {
@@ -62,4 +67,61 @@ export async function logoutUser(): Promise<void> {
 
 export async function logoutAllDevices(): Promise<void> {
   await api.post('/auth/logout-all');
+}
+
+export async function getGoogleAuthUrl(): Promise<{ url: string }> {
+  const { data } = await api.get<{ url: string }>('/auth/google/url');
+  return data;
+}
+
+export async function loginWithGoogle(
+  req: GoogleLoginRequest
+): Promise<AuthResponse | IdentityLinkingRequiredResponse> {
+  const { data } = await api.post<AuthResponse | IdentityLinkingRequiredResponse>(
+    '/auth/google/login',
+    req
+  );
+  return data;
+}
+
+export async function confirmGoogleLink(
+  req: GoogleLinkConfirmRequest
+): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>('/auth/google/link/confirm', req);
+  return data;
+}
+
+export async function getUserContacts(): Promise<ContactItem[]> {
+  const { data } = await api.get<ContactItem[]>('/auth/contacts');
+  return data;
+}
+
+export async function addContact(
+  type: 'email' | 'phone',
+  value: string
+): Promise<{ id: string; message: string }> {
+  const { data } = await api.post<{ id: string; message: string }>('/auth/contacts', {
+    type,
+    value,
+  });
+  return data;
+}
+
+export async function verifyContact(token: string): Promise<{ status: string }> {
+  const { data } = await api.post<{ status: string }>('/auth/contacts/verify', { token });
+  return data;
+}
+
+export async function setPrimaryContact(contactId: string): Promise<{ status: string }> {
+  const { data } = await api.put<{ status: string }>(`/auth/contacts/${contactId}/primary`);
+  return data;
+}
+
+export async function deleteContact(contactId: string): Promise<void> {
+  await api.delete(`/auth/contacts/${contactId}`);
+}
+
+export async function getLinkedIdentities(): Promise<LinkedIdentityItem[]> {
+  const { data } = await api.get<LinkedIdentityItem[]>('/auth/identities');
+  return data;
 }

@@ -65,41 +65,65 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Blockers/constraints: scope authorized by current user; implementation choices in ADR-006.
 - Verification status: Full unit and end-to-end lifecycle test suite passing (100% green). All 8 REST endpoints tested.
 
+## AUTH-002 — Multi-Identity Authentication, Google OAuth & Account Linking
+
+- Module: identity; priority: P1.
+- Dependencies: AUTH-001.
+- Scope: Implement Google OAuth 2.0 / OpenID Connect authorization code flow, verified account linking with existing credentials/email OTP challenge tokens (HTTP 409 `linking_required`), and multi-contact management (`identity.user_contacts`) with verified/primary switching.
+- Acceptance criteria: Google OAuth endpoints functional (`GET /auth/google/url`, `POST /auth/google/login`, `GET /auth/google/callback`, `POST /auth/google/link/confirm`); multi-contact endpoints functional (`GET/POST /auth/contacts`, `POST /auth/contacts/verify`, `PUT /auth/contacts/{id}/primary`, `DELETE /auth/contacts/{id}`); `GET /auth/identities` functional. Strict DTO validation returning HTTP 422 `validation_failed`.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity; explicit user identity request 2026-10-23.
+- Relevant files: `backend/internal/modules/identity/; backend/migrations/000008*; backend/migrations/000009*; frontend/src/api/auth.ts; frontend/src/pages/PublicPages.tsx; frontend_v1/packages/api/`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: `go build ./...` compiled, migrations 000008 & 000009 applied to PostgreSQL, `frontend/` and `frontend_v1/` build and typechecks pass. Tests: NOT RUN (DEFERRED).
+
+## CON-000 — Consumer Profile Management & MFA Factor Readiness
+
+- Module: consumer; priority: P1.
+- Dependencies: AUTH-001.
+- Scope: Implement 1:0..1 `consumer.consumer_profiles` schema and service with row-level security (`user_id = app.current_user_id()`); align `identity.mfa_factors` with `encrypted_secret` for deferred MFA rollout.
+- Acceptance criteria: Authenticated endpoints `GET /consumer/profile`, `POST /consumer/profile`, `PATCH /consumer/profile` with DTO validation returning HTTP 422; migration 000007 applied with RLS forced.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity; explicit user identity request 2026-10-23.
+- Relevant files: `backend/internal/modules/consumer/; backend/migrations/000007*; frontend/src/api/auth.ts; frontend_v1/packages/api/`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: `go build ./...` compiled, migration 000007 applied to PostgreSQL, frontend client methods compiled. Tests: NOT RUN (DEFERRED).
+
 ## ORG-001 — Organization membership schema and services
 
 - Module: organization; priority: P1.
 - Dependencies: AUTH-001.
-- Scope: Design then add organization membership and multi-owner lifecycle.
-- Acceptance criteria: BR-001 enforced atomically; membership isolation and role changes authorized; schema/API review completed.
-- Status: BACKLOG
-- Owner/agent: unassigned.
-- Relevant files: `backend/migrations/; future organization module`.
-- Blockers/constraints: Schema absent.
-- Verification status: NOT RUN
+- Scope: Design and implement organization membership, roles, permissions, invitations, and multi-owner lifecycle.
+- Acceptance criteria: BR-001 enforced via DB trigger (`organization.trg_enforce_last_active_owner`); membership isolation and role changes authorized; atomic organization creation (`organization.create_organization_with_owner`). DTO validation returning HTTP 422.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity; explicit user request 2026-10-23.
+- Relevant files: `backend/internal/modules/organization/; backend/migrations/000010*; backend/migrations/000012*; frontend/src/api/organization.ts; frontend_v1/packages/api/src/organization.ts`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: Migrations 10 & 12 applied to live PostgreSQL, `organization.create_organization_with_owner` verified, BR-001 last-owner trigger verified, Go packages and TypeScript types pass. Tests: NOT RUN (DEFERRED).
 
 ## BILL-001 — Billing entitlement and quotas
 
 - Module: billing; priority: P1.
 - Dependencies: ORG-001.
-- Scope: Design plans/subscriptions/trials and quota checks.
-- Acceptance criteria: Approved lifecycle, concurrency and entitlement behavior documented and implemented.
-- Status: BACKLOG
-- Owner/agent: unassigned.
-- Relevant files: `future billing module; migrations`.
-- Blockers/constraints: Billing lifecycle/provider decisions unresolved.
-- Verification status: NOT RUN
+- Scope: Design and implement plans, plan versions, subscriptions, billing invoices, payments, usage metering, and webhook receipts.
+- Acceptance criteria: Enforce maximum of one currently effective billing subscription per organization via partial unique index `uq_effective_subscription_per_org`; idempotent webhook processing via `billing_webhook_events (provider, event_id)`; seed plans (free, pro, enterprise).
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity; explicit user request 2026-10-23.
+- Relevant files: `backend/internal/modules/billing/; backend/migrations/000011*; backend/migrations/000012*; frontend/src/api/billing.ts; frontend_v1/packages/api/src/billing.ts`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: Migration 11 applied to live PostgreSQL, partial unique index verified in PostgreSQL, Go build clean, TypeScript types pass. Tests: NOT RUN (DEFERRED).
 
 ## STORE-001 — Store creation and membership
 
 - Module: store; priority: P1.
 - Dependencies: BILL-001.
-- Scope: Store schema, creation, membership and RBAC.
-- Acceptance criteria: BR-002/BR-004 enforced; quotas atomic; cross-store isolation verified.
-- Status: BACKLOG
-- Owner/agent: unassigned.
-- Relevant files: `future store module; migrations`.
-- Blockers/constraints: Dependent domain schemas absent.
-- Verification status: NOT RUN
+- Scope: Store schema, store creation, store roles, store membership, and RBAC.
+- Acceptance criteria: One organization has many stores, but every store belongs to exactly one organization; BR-002 enforced via unique constraint `(store_id, user_id)` (one active role per user per store); BR-004 enforced via subscription quota check on creation.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity; explicit user request 2026-10-23.
+- Relevant files: `backend/internal/modules/store/; backend/migrations/000010*; backend/migrations/000012*; frontend/src/api/store.ts; frontend_v1/packages/api/src/store.ts`.
+- Blockers/constraints: Unit test authoring deferred per standing instruction.
+- Verification status: Migration 10 applied to live PostgreSQL, unique constraint verified, quota checking logic implemented, Go build and TypeScript types pass. Tests: NOT RUN (DEFERRED).
 
 ## INV-001 — Products and inventory
 
@@ -197,7 +221,40 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Blockers/constraints: Unit test authoring deferred per standing instruction.
 - Verification status: `pnpm -F @eghissab/merchant type-check` (0 errors), `pnpm -F @eghissab/merchant build` (clean dist bundle), full workspace `pnpm build` green. Tests: NOT RUN (DEFERRED).
 
-## MOB-001 — Expo client foundation
+## AUTHZ-001 — Domain C: Role & Permission Management
+- Module: authorization / store; priority: P1.
+- Dependencies: STORE-001, ORG-001.
+- Scope: Migration 000013 creating `app.permissions`, `store.store_role_permissions`, `app.menus`, `app.menu_permissions`, `store.store_settings`, `store.store_invitations`; centralized `backend/internal/authz/authz.go`; store module handler/service/repository CRUD for roles, permissions, settings, staff invitations, and dynamic presentation menus; frontend API clients in `frontend/src/api/store.ts` and `frontend_v1/packages/api/src/store.ts`.
+- Acceptance criteria: Strict authorization vs presentation separation; organization-reusable roles; implicit org owner supervisory bypass; auto-initialized store settings via database trigger; RLS non-recursive security definer functions; DTO validation returning HTTP 422 `validation_failed`.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `backend/migrations/000013_role_and_permission_management.*.sql`, `backend/internal/authz/authz.go`, `backend/internal/modules/store/*`, `frontend/src/api/store.ts`, `frontend_v1/packages/api/src/store.ts`.
+- Blockers/constraints: Unit tests deferred per standing user instruction.
+- Verification status: Migrations applied to PostgreSQL 17; end-to-end live API verification script executed (all 12 verification stages passed); backend compiled (`go build ./...`, `bin/api/api`, `bin/migrate`); frontend compiled (`pnpm build`, `turbo run type-check`). Tests: NOT RUN (DEFERRED).
+
+## STORE-OPS-001 — Domain D: Store Operations, Customers & Invoicing
+- Module: store / invoice; priority: P1.
+- Dependencies: AUTHZ-001, STORE-001.
+- Scope: Migration 000014 creating `store.products`, `store.inventory_locations`, `store.inventory_balances`, `store.stock_movements`, `store.store_customers`, `invoice.invoices`, `invoice.invoice_items`, `invoice.invoice_decisions`, `invoice.invoice_events`, `invoice.invoice_payments`, `invoice.invoice_adjustments`; database triggers for automatic location initialization (`store.trg_init_store_location`), atomic stock movements balancing (`store.trg_apply_stock_movement`), and immutability protection for issued invoice items and financial totals (`invoice.trg_protect_issued_invoice_items`, `invoice.trg_protect_issued_invoice`); Go modules `backend/internal/modules/store` and `backend/internal/modules/invoice` implementing products, inventory, customer, invoice lifecycle, payments, adjustments, and event logging; Frontend API clients in `frontend/src/api/store.ts`, `frontend/src/api/invoice.ts` and `frontend_v1/packages/api/src/`.
+- Acceptance criteria: Invoices belong to exactly one store; issued invoice line items and financial totals are strictly immutable; inventory balances are controlled strictly by transactional stock movements; adjustments (credit/debit notes) do not rewrite issued invoice records; DTO validation maps errors to HTTP 422 `validation_failed`.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `backend/migrations/000014_store_operations_and_invoicing.*.sql`, `backend/internal/modules/store/*`, `backend/internal/modules/invoice/*`, `frontend/src/api/store.ts`, `frontend/src/api/invoice.ts`, `frontend_v1/packages/api/src/*`.
+- Blockers/constraints: Unit test authoring deferred per user standing instruction.
+- Verification status: Migration 14 applied cleanly to PostgreSQL 17; end-to-end live API verification script `scratch/verify_domain_d.sh` passed 19/19 checks; backend compiled (`go build ./...`, `bin/api/api`, exit code 0); frontend compiled (`pnpm build` in `frontend/`, `turbo run type-check` across 10 packages in `frontend_v1/`, exit code 0). Tests: NOT RUN (DEFERRED).
+
+## GLOBAL-CUST-001 — Domain E: Global Customers, Store Membership & Expenses
+- Module: consumer / store / invoice; priority: P1.
+- Dependencies: STORE-OPS-001, AUTH-001.
+- Scope: Migrations 000015 and 000016 creating `consumer.customer_links`, `consumer.membership_requests`, `consumer.expense_categories`, `consumer.expense_entries`, `consumer.expense_adjustments`, and updating `store.stores` RLS policy for active store visibility; Go module `backend/internal/modules/consumer` implementing membership requests, customer links, cross-store consumer invoices, invoice decisions, expense categories, expense entries, expense adjustments, and invoice claim deduplication; Frontend API clients in `frontend/src/api/consumer.ts` and `frontend_v1/packages/api/src/consumer.ts`.
+- Acceptance criteria: Core relationship `users -> consumer_profiles -> customer_links -> store_customers -> invoices` enforced; temporal invoice access gate (`access_from`) blocks historical invoices before linking date; pending membership requests grant zero invoice access until approved by store staff with `customer.manage` or org owner; partial unique index deduplicates invoice expense claims returning HTTP 409 Conflict; personal manual expenses supported without stores or invoices; auditable expense adjustments record corrections without rewriting records; DTO validation maps errors to HTTP 422 `validation_failed`.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `backend/migrations/000015_*`, `backend/migrations/000016_*`, `backend/internal/modules/consumer/*`, `frontend/src/api/consumer.ts`, `frontend_v1/packages/api/src/consumer.ts`.
+- Blockers/constraints: Unit test authoring deferred per user standing instruction.
+- Verification status: Migrations 15 and 16 applied cleanly to PostgreSQL 17; end-to-end live API verification script `scratch/verify_domain_e.sh` passed 22/22 checks; backend compiled (`go build ./...`, `bin/api/api`, `bin/migrate`, exit code 0); frontend compiled (`pnpm build` in `frontend/`, `turbo run type-check` across 10 packages in `frontend_v1/`, exit code 0). Tests: NOT RUN (DEFERRED).
+
+
 
 - Module: mobile; priority: P3.
 - Dependencies: AUTH-001; mobile scope approved.

@@ -15,9 +15,14 @@ import (
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/config"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleware"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/billing"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/consumer"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/health"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/identity"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/invoice"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/listing"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/organization"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/store"
 )
 
 func main() {
@@ -107,10 +112,13 @@ func main() {
 	}
 
 	identityModule, err := identity.NewModule(txManager, identity.Config{
-		SigningKeyBase64:  signingKey,
-		Issuer:            issuer,
-		Audience:          audience,
-		TrustedProxyCIDRs: os.Getenv("AUTH_TRUSTED_PROXY_CIDRS"),
+		SigningKeyBase64:   signingKey,
+		Issuer:             issuer,
+		Audience:           audience,
+		TrustedProxyCIDRs:  cfg.TrustedProxyCIDRs,
+		GoogleClientID:     cfg.GoogleClientID,
+		GoogleClientSecret: cfg.GoogleClientSecret,
+		GoogleRedirectURL:  cfg.GoogleRedirectURL,
 	}, mailer, logger)
 	if err != nil {
 		log.Fatalf("identity configuration: %v", err)
@@ -126,6 +134,34 @@ func main() {
 
 	listingModule := listing.NewModule(db, logger)
 	listingModule.RegisterRoutes(mux)
+
+	consumerService := consumer.NewService(txManager)
+	consumerModule := consumer.NewModule(consumerService, identityModule.RequireAuth, logger)
+	consumerModule.RegisterRoutes(mux)
+
+	// Organization Module
+	orgRepo := organization.NewRepository(db)
+	orgService := organization.NewService(orgRepo, txManager)
+	orgModule := organization.NewModule(orgService, identityModule.RequireAuth, logger)
+	orgModule.RegisterRoutes(mux)
+
+	// Store Module
+	storeRepo := store.NewRepository(db)
+	storeService := store.NewService(storeRepo, txManager)
+	storeModule := store.NewModule(storeService, identityModule.RequireAuth, logger)
+	storeModule.RegisterRoutes(mux)
+
+	// Billing Module
+	billingRepo := billing.NewRepository(db)
+	billingService := billing.NewService(billingRepo, txManager)
+	billingModule := billing.NewModule(billingService, identityModule.RequireAuth, logger)
+	billingModule.RegisterRoutes(mux)
+
+	// Invoice Module
+	invoiceRepo := invoice.NewRepository(db)
+	invoiceService := invoice.NewService(invoiceRepo, txManager)
+	invoiceModule := invoice.NewModule(invoiceService, identityModule.RequireAuth, logger)
+	invoiceModule.RegisterRoutes(mux)
 
 	// Global middlewares
 	rateLimiter, err := middleware.NewIPRateLimiter(middleware.RateLimiterConfig{

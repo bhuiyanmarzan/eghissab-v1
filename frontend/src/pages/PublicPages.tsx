@@ -16,6 +16,9 @@ import {
   verifyEmail,
   resendVerification,
   getCurrentUser,
+  getGoogleAuthUrl,
+  loginWithGoogle,
+  confirmGoogleLink,
   type ApiErrorResponse,
 } from '../api/auth';
 import { useAuthStore } from '../store/useAuthStore';
@@ -64,6 +67,75 @@ export function AuthPage({ mode }: { mode: string }) {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendEmail, setResendEmail] = useState(queryEmail);
 
+  // Google OAuth & Verified Linking State
+  const queryLinking = searchParams.get('linking_required') === 'true';
+  const queryLinkToken = searchParams.get('link_challenge_token') || '';
+  const [isLinking, setIsLinking] = useState(queryLinking);
+  const [linkingToken, setLinkingToken] = useState(queryLinkToken);
+  const [linkingEmail, setLinkingEmail] = useState(queryEmail);
+  const [linkPassword, setLinkPassword] = useState('');
+  const [linkCode, setLinkCode] = useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // Detect OAuth callback code & state params
+  useEffect(() => {
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    if (code && state) {
+      setIsGoogleLoading(true);
+      loginWithGoogle({ code, state })
+        .then(async (res) => {
+          if ('status' in res && res.status === 'linking_required') {
+            setIsLinking(true);
+            setLinkingToken(res.link_challenge_token);
+            setLinkingEmail(res.email);
+            setGeneralError(null);
+          } else if ('access_token' in res) {
+            const user = await getCurrentUser();
+            setAuth(user, res.access_token);
+            navigate('/', { replace: true });
+          }
+        })
+        .catch((err: any) => {
+          setGeneralError(err.response?.data?.error?.message || 'Google authentication failed');
+        })
+        .finally(() => {
+          setIsGoogleLoading(false);
+        });
+    }
+  }, [location.search]);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      const { url } = await getGoogleAuthUrl();
+      window.location.href = url;
+    } catch {
+      setGeneralError('Failed to initiate Google sign-in. Please try again.');
+      setIsGoogleLoading(false);
+    }
+  };
+
+  const handleConfirmLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGeneralError(null);
+    try {
+      setIsGoogleLoading(true);
+      const res = await confirmGoogleLink({
+        link_challenge_token: linkingToken,
+        password: linkPassword || undefined,
+        code: linkCode || undefined,
+      });
+      const user = await getCurrentUser();
+      setAuth(user, res.access_token);
+      navigate('/', { replace: true });
+    } catch (err: any) {
+      setGeneralError(err.response?.data?.error?.message || 'Failed to link account. Please verify your credentials.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
   // Timer for resend verification cooldown
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -77,6 +149,9 @@ export function AuthPage({ mode }: { mode: string }) {
   useEffect(() => {
     setGeneralError(null);
     setSuccessMessage(null);
+    if (!queryLinking) {
+      setIsLinking(false);
+    }
   }, [mode]);
 
   // 1. Registration form
@@ -261,7 +336,73 @@ export function AuthPage({ mode }: { mode: string }) {
             </div>
           )}
 
-          {mode === 'check-mail' ? (
+          {isLinking ? (
+            <form onSubmit={handleConfirmLink} className="space-y-4">
+              <div className="text-center mb-4">
+                <span className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
+                  <ShieldCheck className="size-6" />
+                </span>
+                <h3 className="mt-2 text-lg font-semibold">{translateNode("Account Linking Required")}</h3>
+                <p className="mt-1 text-xs text-muted">
+                  {translateNode("An account with ")}
+                  <b className="text-ink">{linkingEmail || 'this email'}</b>
+                  {translateNode(" already exists. Confirm your password or verification code to link your Google account.")}
+                </p>
+              </div>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">{translateNode("Account Password")}</span>
+                <Input
+                  type="password"
+                  placeholder="Enter your existing account password"
+                  value={linkPassword}
+                  onChange={(e) => setLinkPassword(e.target.value)}
+                  disabled={isGoogleLoading}
+                />
+              </label>
+
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-surface px-2 text-muted">{translateNode("OR VERIFY BY CODE")}</span>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium">{translateNode("Verification Code")}</span>
+                <Input
+                  placeholder="Code sent to your email"
+                  value={linkCode}
+                  onChange={(e) => setLinkCode(e.target.value)}
+                  disabled={isGoogleLoading}
+                />
+              </label>
+
+              <Button type="submit" className="w-full mt-2" disabled={isGoogleLoading || (!linkPassword && !linkCode)}>
+                {isGoogleLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" />
+                    {translateNode("Linking account...")}
+                  </span>
+                ) : (
+                  translateNode("Confirm & Link Account")
+                )}
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsLinking(false); setGeneralError(null); }}
+                  className="inline-flex items-center gap-2 text-sm text-muted hover:text-ink hover:underline"
+                >
+                  <ArrowLeft className="size-4" />
+                  {translateNode("Cancel")}
+                </button>
+              </div>
+            </form>
+          ) : mode === 'check-mail' ? (
             <div className="text-center">
               <span className="mx-auto grid size-20 place-items-center rounded-full bg-primary-soft">
                 <Mail className="size-9 text-primary" />
@@ -423,6 +564,43 @@ export function AuthPage({ mode }: { mode: string }) {
                 )}
               </Button>
 
+              <div className="relative my-3">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-surface px-2 text-muted">{translateNode("Or register with")}</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading || registerForm.formState.isSubmitting}
+              >
+                <svg className="size-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{translateNode("Sign up with Google")}</span>
+              </Button>
+
               <div className="text-center pt-2">
                 <Link to="/auth/login" className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
                   <ArrowLeft className="size-4" />
@@ -491,6 +669,43 @@ export function AuthPage({ mode }: { mode: string }) {
                 ) : (
                   translateNode("Login")
                 )}
+              </Button>
+
+              <div className="relative my-3">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-surface px-2 text-muted">{translateNode("Or continue with")}</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading || loginForm.formState.isSubmitting}
+              >
+                <svg className="size-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{translateNode("Sign in with Google")}</span>
               </Button>
 
               <div className="text-center pt-2">

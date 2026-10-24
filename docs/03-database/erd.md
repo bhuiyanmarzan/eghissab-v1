@@ -1,6 +1,6 @@
 # Actual migration ERD
 
-FACT: eight tables only. Optional FK relationships are shown separately. Columns, constraints and indexes are in [dictionary](schema-dictionary.md). The absent listing relation is intentionally excluded.
+FACT: twenty-six tables in database catalog across identity, consumer, platform, organization, store, and billing. Columns, constraints and indexes are in [dictionary](schema-dictionary.md).
 
 ```mermaid
 erDiagram
@@ -8,10 +8,23 @@ erDiagram
   identity_users ||--o{ identity_user_identities : has
   identity_users ||--o{ identity_user_sessions : has
   identity_users ||--o{ identity_mfa_factors : has
-  identity_users |o--o{ identity_verification_challenges : subject
-  identity_user_contacts |o--o{ identity_verification_challenges : contact
+  identity_users ||--o| consumer_consumer_profiles : profile
+  identity_users ||--o{ organization_organizations : creates
+  identity_users ||--o{ organization_organization_memberships : belongs_to
+  organization_organizations ||--o{ organization_organization_memberships : has
+  organization_organizations ||--o{ store_stores : owns
+  organization_organizations ||--o{ organization_organization_roles : defines
+  organization_organizations ||--o{ store_store_roles : defines
+  organization_organizations ||--o{ billing_subscriptions : consumes
+  billing_plans ||--o{ billing_plan_versions : versions
+  billing_plan_versions ||--o{ billing_subscriptions : selected_by
+  billing_subscriptions ||--o{ billing_billing_invoices : generates
+  billing_billing_invoices ||--o{ billing_billing_payments : pays
+  organization_organizations ||--o{ billing_usage_records : tracks
+  store_stores ||--o{ store_store_memberships : has
+  identity_users ||--o{ store_store_memberships : assigned
+  store_store_roles ||--o{ store_store_memberships : grants
   identity_users ||--o{ platform_role_assignments : assigned
-  identity_users |o--o{ platform_role_assignments : grants
   platform_roles ||--o{ platform_role_assignments : role
   identity_users {
     uuid id PK
@@ -32,19 +45,85 @@ erDiagram
     uuid id PK
     uuid user_id FK
   }
+  consumer_consumer_profiles {
+    uuid id PK
+    uuid user_id FK "unique"
+  }
   identity_verification_challenges {
     uuid id PK
     uuid user_id FK "nullable"
     uuid contact_id FK "nullable"
   }
-  platform_roles {
-    uuid id PK
-  }
+  store_store_roles ||--o{ store_store_role_permissions : defines
+  app_permissions ||--o{ store_store_role_permissions : assigned
+  app_menus ||--o{ app_menu_permissions : requires
+  app_permissions ||--o{ app_menu_permissions : permits
+  store_stores ||--|| store_store_settings : configures
+  store_stores ||--o{ store_store_invitations : invites
+  store_store_roles ||--o{ store_store_invitations : grants
+  consumer_consumer_profiles ||--o{ consumer_customer_links : links
+  store_store_customers ||--o{ consumer_customer_links : establishes
+  consumer_consumer_profiles ||--o{ consumer_membership_requests : submits
+  store_stores ||--o{ consumer_membership_requests : receives
+  consumer_consumer_profiles ||--o{ consumer_expense_categories : categorizes
+  consumer_consumer_profiles ||--o{ consumer_expense_entries : records
+  consumer_expense_entries ||--o{ consumer_expense_adjustments : adjusts
+  invoice_invoices ||--o| consumer_expense_entries : claims
   platform_role_assignments {
     uuid id PK
     uuid user_id FK
     uuid role_id FK
     uuid granted_by FK "nullable"
+  }
+  app_permissions {
+    uuid id PK
+  }
+  store_store_role_permissions {
+    uuid role_id PK_FK
+    uuid permission_id PK_FK
+  }
+  app_menus {
+    uuid id PK
+  }
+  app_menu_permissions {
+    uuid menu_id PK_FK
+    uuid permission_id PK_FK
+  }
+  store_store_settings {
+    uuid store_id PK_FK
+  }
+  store_store_invitations {
+    uuid id PK
+    uuid store_id FK
+    uuid role_id FK
+  }
+  consumer_customer_links {
+    uuid id PK
+    uuid consumer_id FK
+    uuid store_customer_id FK
+  }
+  consumer_membership_requests {
+    uuid id PK
+    uuid consumer_id FK
+    uuid store_id FK
+    uuid store_customer_id FK "nullable"
+  }
+  consumer_expense_categories {
+    uuid id PK
+    uuid consumer_id FK
+    uuid parent_id FK "nullable"
+  }
+  consumer_expense_entries {
+    uuid id PK
+    uuid consumer_id FK
+    uuid invoice_id FK "nullable"
+    uuid store_id FK "nullable"
+    uuid category_id FK "nullable"
+  }
+  consumer_expense_adjustments {
+    uuid id PK
+    uuid expense_entry_id FK
+    uuid created_by FK "nullable"
   }
 ```
 

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -19,12 +20,16 @@ import (
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/httpx"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/middleware"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/tenant"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Config struct {
 	SigningKeyBase64, Issuer, Audience string
 	TrustedProxyCIDRs                  string
+	GoogleClientID                     string
+	GoogleClientSecret                 string
+	GoogleRedirectURL                  string
 }
 type Module struct {
 	Service        *Service
@@ -55,7 +60,29 @@ func NewModule(tx database.TxManager, config Config, mailer VerificationMailer, 
 	if err != nil {
 		return nil, err
 	}
-	return &Module{Service: &Service{tx: tx, repo: &Repository{}, tokens: tokenManager{key, config.Issuer, config.Audience}, mail: mailer, dummyHash: string(dummy)}, logger: logger, trustedProxies: proxies}, nil
+
+	var googleClient *GoogleOAuthClient
+	if config.GoogleClientID != "" {
+		googleClient = NewGoogleOAuthClient(GoogleOAuthConfig{
+			ClientID:     config.GoogleClientID,
+			ClientSecret: config.GoogleClientSecret,
+			RedirectURL:  config.GoogleRedirectURL,
+			StateSecret:  key,
+		})
+	}
+
+	return &Module{
+		Service: &Service{
+			tx:        tx,
+			repo:      &Repository{},
+			tokens:    tokenManager{key, config.Issuer, config.Audience},
+			mail:      mailer,
+			dummyHash: string(dummy),
+			google:    googleClient,
+		},
+		logger:         logger,
+		trustedProxies: proxies,
+	}, nil
 }
 func (m *Module) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /auth/register", m.limit("register", http.HandlerFunc(m.register)))
@@ -66,6 +93,32 @@ func (m *Module) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /auth/me", m.RequireAuth(http.HandlerFunc(m.me)))
 	mux.Handle("POST /auth/logout", m.RequireAuth(http.HandlerFunc(m.logout)))
 	mux.Handle("POST /auth/logout-all", m.RequireAuth(http.HandlerFunc(m.logoutAll)))
+
+	// Google OAuth & Verified Linking
+	mux.HandleFunc("GET /auth/google/url", m.googleAuthURL)
+	mux.HandleFunc("GET /api/auth/google/url", m.googleAuthURL)
+	mux.Handle("POST /auth/google/login", m.limit("google_login", http.HandlerFunc(m.googleLogin)))
+	mux.Handle("POST /api/auth/google/login", m.limit("google_login", http.HandlerFunc(m.googleLogin)))
+	mux.HandleFunc("GET /auth/google/callback", m.googleCallback)
+	mux.HandleFunc("GET /api/auth/google/callback", m.googleCallback)
+	mux.Handle("POST /auth/google/link/confirm", m.limit("google_link", http.HandlerFunc(m.confirmGoogleLink)))
+	mux.Handle("POST /api/auth/google/link/confirm", m.limit("google_link", http.HandlerFunc(m.confirmGoogleLink)))
+
+	// Multi-Contact Management
+	mux.Handle("GET /auth/contacts", m.RequireAuth(http.HandlerFunc(m.getContacts)))
+	mux.Handle("GET /api/auth/contacts", m.RequireAuth(http.HandlerFunc(m.getContacts)))
+	mux.Handle("POST /auth/contacts", m.RequireAuth(http.HandlerFunc(m.addContact)))
+	mux.Handle("POST /api/auth/contacts", m.RequireAuth(http.HandlerFunc(m.addContact)))
+	mux.Handle("POST /auth/contacts/verify", m.RequireAuth(http.HandlerFunc(m.verifyContact)))
+	mux.Handle("POST /api/auth/contacts/verify", m.RequireAuth(http.HandlerFunc(m.verifyContact)))
+	mux.Handle("PUT /auth/contacts/{id}/primary", m.RequireAuth(http.HandlerFunc(m.setPrimaryContact)))
+	mux.Handle("PUT /api/auth/contacts/{id}/primary", m.RequireAuth(http.HandlerFunc(m.setPrimaryContact)))
+	mux.Handle("DELETE /auth/contacts/{id}", m.RequireAuth(http.HandlerFunc(m.deleteContact)))
+	mux.Handle("DELETE /api/auth/contacts/{id}", m.RequireAuth(http.HandlerFunc(m.deleteContact)))
+
+	// Multi-Identity Management
+	mux.Handle("GET /auth/identities", m.RequireAuth(http.HandlerFunc(m.getIdentities)))
+	mux.Handle("GET /api/auth/identities", m.RequireAuth(http.HandlerFunc(m.getIdentities)))
 }
 func (m *Module) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +152,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	}
 	return nil
 }
+
 // respond is removed; use httpx.JSON or httpx.NoContent directly.
 func (m *Module) fail(w http.ResponseWriter, err error) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -133,7 +187,7 @@ func (m *Module) fail(w http.ResponseWriter, err error) {
 func accepted(w http.ResponseWriter) {
 	// Verification email instructions commented out - direct registration
 	w.Header().Set("Cache-Control", "no-store")
-	httpx.JSON(w, http.StatusOK, map[string]string{"message": "Registration successful"})
+	httpx.JSON(w, http.StatusCreated, map[string]string{"message": "Registration successful"})
 }
 func (m *Module) register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -370,3 +424,180 @@ func (m *Module) clientIP(r *http.Request) (string, error) {
 	}
 	return peer.String(), nil
 }
+
+func (m *Module) googleAuthURL(w http.ResponseWriter, r *http.Request) {
+	authURL, err := m.Service.GoogleAuthURL()
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, map[string]string{"url": authURL})
+}
+
+func (m *Module) googleLogin(w http.ResponseWriter, r *http.Request) {
+	var in GoogleLoginRequest
+	if err := decode(w, r, &in); err != nil {
+		m.fail(w, err)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		m.fail(w, err)
+		return
+	}
+	res, err := m.Service.GoogleLogin(r.Context(), in.Code, in.State)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	if res.LinkingRequired {
+		w.Header().Set("Cache-Control", "no-store")
+		httpx.JSON(w, http.StatusConflict, map[string]any{
+			"status":               "linking_required",
+			"link_challenge_token": res.LinkChallengeToken,
+			"email":                res.Email,
+			"message":              "An account with this email already exists. Confirm password or verify email to link Google account.",
+		})
+		return
+	}
+	setRefreshCookie(w, r, res.Tokens.RefreshToken)
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, res.Tokens)
+}
+
+func (m *Module) googleCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	state := r.URL.Query().Get("state")
+	if code == "" || state == "" {
+		m.fail(w, &ValidationError{Field: "code", Msg: "authorization code and state are required"})
+		return
+	}
+	res, err := m.Service.GoogleLogin(r.Context(), code, state)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	if res.LinkingRequired {
+		redirectURL := fmt.Sprintf("/login?linking_required=true&link_challenge_token=%s&email=%s", url.QueryEscape(res.LinkChallengeToken), url.QueryEscape(res.Email))
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+	setRefreshCookie(w, r, res.Tokens.RefreshToken)
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func (m *Module) confirmGoogleLink(w http.ResponseWriter, r *http.Request) {
+	var in GoogleLinkConfirmRequest
+	if err := decode(w, r, &in); err != nil {
+		m.fail(w, err)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		m.fail(w, err)
+		return
+	}
+	tokens, err := m.Service.ConfirmGoogleLink(r.Context(), in)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	setRefreshCookie(w, r, tokens.RefreshToken)
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.JSON(w, http.StatusOK, tokens)
+}
+
+func (m *Module) getContacts(w http.ResponseWriter, r *http.Request) {
+	p, _ := FromContext(r.Context())
+	contacts, err := m.Service.Contacts(r.Context(), p.UserID)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	if contacts == nil {
+		contacts = []ContactResponse{}
+	}
+	httpx.JSON(w, http.StatusOK, contacts)
+}
+
+func (m *Module) addContact(w http.ResponseWriter, r *http.Request) {
+	p, _ := FromContext(r.Context())
+	var in AddContactRequest
+	if err := decode(w, r, &in); err != nil {
+		m.fail(w, err)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		m.fail(w, err)
+		return
+	}
+	cid, err := m.Service.AddContact(r.Context(), p.UserID, in)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]any{
+		"id":      cid,
+		"message": "contact added successfully",
+	})
+}
+
+func (m *Module) verifyContact(w http.ResponseWriter, r *http.Request) {
+	var in VerifyContactRequest
+	if err := decode(w, r, &in); err != nil {
+		m.fail(w, err)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		m.fail(w, err)
+		return
+	}
+	if err := m.Service.VerifyContact(r.Context(), in.Token); err != nil {
+		m.fail(w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "verified"})
+}
+
+func (m *Module) setPrimaryContact(w http.ResponseWriter, r *http.Request) {
+	p, _ := FromContext(r.Context())
+	idStr := r.PathValue("id")
+	cid, err := uuid.Parse(idStr)
+	if err != nil || cid == uuid.Nil {
+		m.fail(w, &ValidationError{Field: "id", Msg: "invalid contact id"})
+		return
+	}
+	if err := m.Service.SetPrimaryContact(r.Context(), p.UserID, cid); err != nil {
+		m.fail(w, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"status": "primary_updated"})
+}
+
+func (m *Module) deleteContact(w http.ResponseWriter, r *http.Request) {
+	p, _ := FromContext(r.Context())
+	idStr := r.PathValue("id")
+	cid, err := uuid.Parse(idStr)
+	if err != nil || cid == uuid.Nil {
+		m.fail(w, &ValidationError{Field: "id", Msg: "invalid contact id"})
+		return
+	}
+	if err := m.Service.DeleteContact(r.Context(), p.UserID, cid); err != nil {
+		m.fail(w, err)
+		return
+	}
+	httpx.NoContent(w)
+}
+
+func (m *Module) getIdentities(w http.ResponseWriter, r *http.Request) {
+	p, _ := FromContext(r.Context())
+	identities, err := m.Service.Identities(r.Context(), p.UserID)
+	if err != nil {
+		m.fail(w, err)
+		return
+	}
+	if identities == nil {
+		identities = []IdentityResponse{}
+	}
+	httpx.JSON(w, http.StatusOK, identities)
+}
+
