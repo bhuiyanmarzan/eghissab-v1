@@ -655,6 +655,163 @@ CREATE TABLE consumer.expense_adjustments (
 );
 ```
 
+## system.audit_events
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Protected activity trail with recursive sanitization redacting credentials.
+
+```sql
+CREATE TABLE system.audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id UUID REFERENCES identity.users(id) ON DELETE SET NULL,
+    organization_id UUID REFERENCES organization.organizations(id) ON DELETE CASCADE,
+    store_id UUID REFERENCES store.stores(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+```
+
+## system.outbox_events
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Transactionally committed domain events for asynchronous dispatching.
+
+```sql
+CREATE TABLE system.outbox_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    aggregate_type VARCHAR(50) NOT NULL,
+    aggregate_id UUID NOT NULL,
+    event_type VARCHAR(100) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+```
+
+## system.event_deliveries
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Consumer delivery status and deduplication per consumer.
+
+```sql
+CREATE TABLE system.event_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL REFERENCES system.outbox_events(id) ON DELETE CASCADE,
+    consumer_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'delivered', 'failed')),
+    delivered_at TIMESTAMPTZ,
+    last_error TEXT,
+    attempt_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT uq_event_consumer UNIQUE (event_id, consumer_name)
+);
+```
+
+## system.jobs
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Background job state supporting concurrency-safe worker claiming (`SELECT ... FOR UPDATE SKIP LOCKED`).
+
+```sql
+CREATE TABLE system.jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID REFERENCES system.outbox_events(id) ON DELETE SET NULL,
+    type VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    run_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    max_attempts INT NOT NULL DEFAULT 3,
+    attempt_count INT NOT NULL DEFAULT 0,
+    locked_at TIMESTAMPTZ,
+    locked_by VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+```
+
+## system.job_attempts
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Persistent execution attempt history with duration and outcome.
+
+```sql
+CREATE TABLE system.job_attempts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID NOT NULL REFERENCES system.jobs(id) ON DELETE CASCADE,
+    attempt_number INT NOT NULL,
+    outcome VARCHAR(20) NOT NULL
+        CHECK (outcome IN ('success', 'failed', 'retryable_error')),
+    error_message TEXT,
+    duration_ms INT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    finished_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+```
+
+## system.file_assets
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Private object metadata and invoice PDF associations.
+
+```sql
+CREATE TABLE system.file_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID REFERENCES invoice.invoices(id) ON DELETE SET NULL,
+    organization_id UUID REFERENCES organization.organizations(id) ON DELETE CASCADE,
+    store_id UUID REFERENCES store.stores(id) ON DELETE CASCADE,
+    storage_key VARCHAR(500) NOT NULL UNIQUE,
+    visibility VARCHAR(20) NOT NULL DEFAULT 'private'
+        CHECK (visibility IN ('private', 'public', 'tenant')),
+    file_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size BIGINT NOT NULL CHECK (file_size >= 0),
+    checksum_sha256 VARCHAR(64),
+    uploaded_by UUID REFERENCES identity.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+```
+
+## system.notification_deliveries
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. Multi-channel recipient and delivery status logging.
+
+```sql
+CREATE TABLE system.notification_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES system.jobs(id) ON DELETE SET NULL,
+    recipient VARCHAR(255) NOT NULL,
+    channel VARCHAR(20) NOT NULL
+        CHECK (channel IN ('email', 'sms', 'push', 'webhook')),
+    template VARCHAR(100) NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    provider_message_id VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sent', 'delivered', 'failed')),
+    attempts INT NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    delivered_at TIMESTAMPTZ
+);
+```
+
+## system.webhook_receipts
+
+Owning module: system. Added in migration `000017_audit_outbox_and_jobs.up.sql`. RLS forced. External provider event receipt and deduplication ensuring idempotency.
+
+```sql
+CREATE TABLE system.webhook_receipts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider VARCHAR(50) NOT NULL,
+    provider_event_id VARCHAR(255) NOT NULL,
+    event_type VARCHAR(100) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(20) NOT NULL DEFAULT 'received'
+        CHECK (status IN ('received', 'processing', 'processed', 'ignored', 'failed')),
+    processed_at TIMESTAMPTZ,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    CONSTRAINT uq_webhook_provider_event UNIQUE (provider, provider_event_id)
+);
+```
+
 Related: [Documentation index](../README.md).
 
 

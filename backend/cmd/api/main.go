@@ -23,6 +23,7 @@ import (
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/listing"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/organization"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/store"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/system"
 )
 
 func main() {
@@ -163,6 +164,16 @@ func main() {
 	invoiceModule := invoice.NewModule(invoiceService, identityModule.RequireAuth, logger)
 	invoiceModule.RegisterRoutes(mux)
 
+	// System Module (Audit Trail, Outbox, Background Jobs, Files, Webhook Ingress)
+	systemRepo := &system.Repository{}
+	systemService := system.NewService(systemRepo, txManager)
+	systemModule := system.NewModule(systemService, identityModule.RequireAuth, logger)
+	systemModule.RegisterRoutes(mux)
+
+	// Inject System integration into invoice and store services
+	invoiceService.SetSystemService(systemService)
+	storeService.SetSystemService(systemService)
+
 	// Global middlewares
 	rateLimiter, err := middleware.NewIPRateLimiter(middleware.RateLimiterConfig{
 		RequestsPerMinute: cfg.RateLimitRPM,
@@ -190,6 +201,10 @@ func main() {
 
 	// Start rate limiter memory cleanup
 	rateLimiter.StartCleanup(ctx, 5*time.Minute)
+
+	// Start system background workers (Outbox Dispatcher & Concurrency-Safe Job Processor)
+	systemWorker := system.NewWorker(systemService, logger)
+	go systemWorker.Start(ctx)
 
 	// Background worker: Periodic cleanup for expired auth_attempts (Phase 1)
 	go func() {

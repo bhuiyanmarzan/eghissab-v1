@@ -394,3 +394,54 @@ Related: [Documentation index](../README.md).
 
 
 
+
+
+## 2026-10-24 — Domain F: Audit, Outbox and Background Jobs Plan & Implementation
+- Completed end-to-end implementation and live verification of **Domain F — Audit, outbox and background jobs**:
+  1. Database Schema & Migrations:
+     - `backend/migrations/000017_audit_outbox_and_jobs.up.sql`: Created 8 system tables in schema `system`:
+       - `system.audit_events`: Protected activity trail (`actor_user_id`, `organization_id`, `store_id`, `action`, `details JSONB`).
+       - `system.outbox_events`: Transactionally committed domain events (`aggregate_type`, `aggregate_id`, `event_type`, `payload JSONB`).
+       - `system.event_deliveries`: Event consumer delivery tracking (`event_id`, `consumer_name`, `status`, `delivered_at`, `attempt_count`, `uq_event_consumer`).
+       - `system.jobs`: Concurrency-safe job state (`type`, `status`, `payload`, `run_at`, `max_attempts`, `attempt_count`, `locked_at`, `locked_by`).
+       - `system.job_attempts`: Persistent attempt history (`job_id`, `attempt_number`, `outcome`, `error_message`, `duration_ms`, `started_at`, `finished_at`).
+       - `system.file_assets`: Private object storage metadata (`invoice_id`, `organization_id`, `store_id`, `storage_key UQ`, `visibility`, `file_name`, `mime_type`, `file_size`, `checksum_sha256`, `uploaded_by`).
+       - `system.notification_deliveries`: Multi-channel notification delivery records (`job_id`, `recipient`, `channel`, `template`, `provider`, `provider_message_id`, `status`, `attempts`).
+       - `system.webhook_receipts`: Deduplicated webhook ingress (`provider`, `provider_event_id`, `event_type`, `payload`, `status`, `processed_at`, `uq_webhook_provider_event`).
+     - Applied migration to PostgreSQL 17 (`eghissab_v1_dev`, schema version 17, dirty=false) with forced RLS and app role grants.
+  2. Backend Implementation:
+     - `backend/internal/modules/system/dto.go`: DTO request and response structs for audit events, outbox events, event deliveries, background jobs, job attempts, file assets, notification deliveries, and webhook receipts, implementing `Validate() error` returning `*ValidationError` (HTTP 422 `validation_failed`).
+     - `backend/internal/modules/system/repository.go`: Parameterized queries for audit filtering, transactional outbox publishing, event delivery upsert, concurrency-safe job claiming via `SELECT ... FOR UPDATE SKIP LOCKED`, job completion and exponential backoff retry calculation, job attempt history logging, file asset creation and retrieval, notification delivery logging, and webhook receipt idempotency.
+     - `backend/internal/modules/system/service.go`: Business service with recursive credential sanitization engine (`SanitizeDetails` redacting `password`, `token`, `secret`, `hash`, `authorization`, `cookie`, `key`, `cvv`, `pin` to `[REDACTED]`), transactional outbox integration, file asset authorization, and webhook deduplication.
+     - `backend/internal/modules/system/worker.go`: Asynchronous background routines for Outbox Dispatcher (polling outbox, dispatching jobs like `generate_invoice_pdf` and `send_notification`) and Job Processor (concurrency-safe job claiming, executing handlers, recording job attempts with execution duration, and exponential backoff on retries).
+     - `backend/internal/modules/system/handler.go`: REST HTTP endpoints for audit events (`/organizations/{id}/audit-events`, `/stores/{id}/audit-events`), background jobs (`/system/jobs`, `/system/jobs/{id}`, `/system/jobs/{id}/attempts`, `/system/jobs/{id}/retry`), outbox inspection (`/system/outbox`), file assets (`/files/{id}`, `/invoices/{id}/pdf`), and webhook ingress (`/webhooks/{provider}`).
+     - Integrated Outbox and Audit seamlessly into business operations:
+       - `backend/internal/modules/store/service.go`: `CreateStore` automatically commits `store.created` audit event within transaction.
+       - `backend/internal/modules/invoice/service.go`: `IssueInvoice` commits `invoice.issued` outbox domain event and audit trail within transaction; `VoidInvoice` commits `invoice.voided`.
+     - `backend/cmd/api/main.go`: Initialized system module, injected system integration into invoice and store services, registered REST routes, and launched system background workers with graceful context cancellation.
+  3. Frontend Integration:
+     - Created `frontend/src/api/system.ts` with comprehensive TypeScript interfaces and Axios methods.
+     - Created `frontend_v1/packages/api/src/system.ts` and re-exported in `frontend_v1/packages/api/src/index.ts`.
+  4. Live Verification:
+     - Created and executed `scratch/verify_domain_f.sh` against live PostgreSQL 17 and running API server (`bin/api/api`).
+     - Passed all 15 verification stages:
+       1. Merchant registration and login.
+       2. Organization and store creation.
+       3. Automatic `store.created` audit event recording inside transaction.
+       4. Recursive audit detail redaction (passwords, tokens, nested secrets redacted to `[REDACTED]`; safe fields preserved).
+       5. DTO validation (HTTP 422 returned on short action validation failure).
+       6. Store customer creation and draft invoice creation.
+       7. Invoice issuance committing `invoice.issued` outbox domain event and audit trail within transaction.
+       8. Asynchronous background outbox dispatcher delivery.
+       9. Outbox event recording verification.
+       10. Job processor claiming and completing `generate_invoice_pdf` job with job attempt logged.
+       11. Invoice PDF registration in `system.file_assets` and access via `/invoices/{id}/pdf` and `/files/{id}`.
+       12. Unauthorized access blocked with HTTP 403 Forbidden.
+       13. Job failure simulation, exponential backoff, attempt recording, and manual retry resetting status to `queued`.
+       14. Webhook initial ingestion HTTP 201 Created and duplicate webhook rejection with HTTP 409 Conflict.
+       15. Webhook DTO validation returning HTTP 422.
+  5. Compilations:
+     - Backend: `go build ./...`, `bin/api/api` compiled cleanly (exit code 0).
+     - Frontend: `tsc -b && vite build` in `frontend/` succeeded with 0 errors (exit code 0).
+     - Monorepo: `turbo run type-check` across 10 packages in `frontend_v1/` passed with 0 errors (exit code 0).
+  6. Standing instruction honored: No test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.

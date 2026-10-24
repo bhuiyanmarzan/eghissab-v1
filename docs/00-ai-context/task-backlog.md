@@ -254,9 +254,19 @@ Selection: resume active task unless blocked; never silently replace it. The use
 - Blockers/constraints: Unit test authoring deferred per user standing instruction.
 - Verification status: Migrations 15 and 16 applied cleanly to PostgreSQL 17; end-to-end live API verification script `scratch/verify_domain_e.sh` passed 22/22 checks; backend compiled (`go build ./...`, `bin/api/api`, `bin/migrate`, exit code 0); frontend compiled (`pnpm build` in `frontend/`, `turbo run type-check` across 10 packages in `frontend_v1/`, exit code 0). Tests: NOT RUN (DEFERRED).
 
+## SYS-001 — Domain F: Audit, Outbox and Background Jobs
 
+- Module: system; priority: P1.
+- Dependencies: AUTH-001, ORG-001, STORE-001, INV-001.
+- Scope: Implementation of protected activity trail (`system.audit_events`), transactional outbox pattern (`system.outbox_events`, `system.event_deliveries`), background job execution engine (`system.jobs`, `system.job_attempts`), private file assets registry (`system.file_assets`), notification delivery logging (`system.notification_deliveries`), and webhook ingress with deduplication (`system.webhook_receipts`).
+- Acceptance criteria: Outbox records transactionally written within business operation transactions (`PublishOutboxTx`); audit events sanitized recursively redacting credential keys to `[REDACTED]`; worker claims jobs concurrency-safely via `FOR UPDATE SKIP LOCKED`; worker logs execution attempt history with duration and outcome; exponential backoff on retries; file assets linked to invoices with visibility authorization; duplicate webhooks rejected with HTTP 409 Conflict; DTO validation maps errors to HTTP 422 `validation_failed`.
+- Status: IMPLEMENTED_UNVERIFIED
+- Owner/agent: Antigravity.
+- Relevant files: `backend/migrations/000017_*`, `backend/internal/modules/system/*`, `backend/internal/modules/invoice/service.go`, `backend/internal/modules/store/service.go`, `frontend/src/api/system.ts`, `frontend_v1/packages/api/src/system.ts`.
+- Blockers/constraints: Unit test authoring deferred per user standing instruction.
+- Verification status: Migration 17 applied cleanly to PostgreSQL 17 (`eghissab_v1_dev`, version 17, dirty=false); end-to-end live API verification script `scratch/verify_domain_f.sh` passed 15/15 checks; backend compiled (`go build ./...`, `bin/api/api`, exit code 0); frontend compiled (`pnpm build` in `frontend/`, `turbo run type-check` in `frontend_v1/`, exit code 0). Tests: NOT RUN (DEFERRED).
 
-- Module: mobile; priority: P3.
+## MOB-001 — Mobile application foundation
 - Dependencies: AUTH-001; mobile scope approved.
 - Scope: Plan and initialize mobile client after dependency approval.
 - Acceptance criteria: Approved auth storage/API contract and minimal consumer flow.

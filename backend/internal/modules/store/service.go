@@ -11,12 +11,18 @@ import (
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/authz"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/system"
 	"github.com/google/uuid"
 )
 
+type AuditIntegration interface {
+	RecordAuditTx(ctx context.Context, tx database.DBTX, actorUserID *uuid.UUID, orgID, storeID *uuid.UUID, action string, details map[string]any) (*system.AuditEventResponse, error)
+}
+
 type Service struct {
-	repo *Repository
-	txm  database.TxManager
+	repo      *Repository
+	txm       database.TxManager
+	systemSvc AuditIntegration
 }
 
 func NewService(repo *Repository, txm database.TxManager) *Service {
@@ -24,6 +30,10 @@ func NewService(repo *Repository, txm database.TxManager) *Service {
 		repo: repo,
 		txm:  txm,
 	}
+}
+
+func (s *Service) SetSystemService(sys AuditIntegration) {
+	s.systemSvc = sys
 }
 
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-z0-9]+`)
@@ -69,7 +79,20 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateStoreR
 		}
 
 		res, err = s.repo.CreateStore(ctx, tx, req.OrganizationID, req.Name, slug, userID)
-		return err
+		if err != nil {
+			return err
+		}
+
+		if s.systemSvc != nil {
+			_, _ = s.systemSvc.RecordAuditTx(ctx, tx, &userID, &req.OrganizationID, &res.ID, "store.created", map[string]any{
+				"store_id":        res.ID.String(),
+				"name":            res.Name,
+				"slug":            res.Slug,
+				"organization_id": req.OrganizationID.String(),
+			})
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, err

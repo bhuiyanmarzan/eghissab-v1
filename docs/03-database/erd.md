@@ -125,6 +125,54 @@ erDiagram
     uuid expense_entry_id FK
     uuid created_by FK "nullable"
   }
+  system_audit_events {
+    uuid id PK
+    uuid actor_user_id FK "nullable"
+    uuid organization_id FK "nullable"
+    uuid store_id FK "nullable"
+  }
+  system_outbox_events {
+    uuid id PK
+    string aggregate_type
+    uuid aggregate_id
+    string event_type
+  }
+  system_event_deliveries {
+    uuid id PK
+    uuid event_id FK
+    string consumer_name
+  }
+  system_jobs {
+    uuid id PK
+    uuid event_id FK "nullable"
+    string type
+    string status
+  }
+  system_job_attempts {
+    uuid id PK
+    uuid job_id FK
+    int attempt_number
+    string outcome
+  }
+  system_file_assets {
+    uuid id PK
+    uuid invoice_id FK "nullable"
+    uuid organization_id FK "nullable"
+    uuid store_id FK "nullable"
+    string storage_key UK
+  }
+  system_notification_deliveries {
+    uuid id PK
+    uuid job_id FK "nullable"
+    string recipient
+    string channel
+  }
+  system_webhook_receipts {
+    uuid id PK
+    string provider
+    string provider_event_id
+    string status
+  }
 ```
 
 Entity names replace schema dots with underscores for display. No target domain relationships are represented as existing tables.

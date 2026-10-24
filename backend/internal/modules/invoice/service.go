@@ -5,12 +5,19 @@ import (
 
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/authz"
 	"github.com/bhuiyanmarzan/eghissab-v1/internal/database"
+	"github.com/bhuiyanmarzan/eghissab-v1/internal/modules/system"
 	"github.com/google/uuid"
 )
 
+type SystemIntegration interface {
+	PublishOutboxTx(ctx context.Context, tx database.DBTX, aggregateType string, aggregateID uuid.UUID, eventType string, payload map[string]any) (*system.OutboxEventResponse, error)
+	RecordAuditTx(ctx context.Context, tx database.DBTX, actorUserID *uuid.UUID, orgID, storeID *uuid.UUID, action string, details map[string]any) (*system.AuditEventResponse, error)
+}
+
 type Service struct {
-	repo *Repository
-	txm  database.TxManager
+	repo      *Repository
+	txm       database.TxManager
+	systemSvc SystemIntegration
 }
 
 func NewService(repo *Repository, txm database.TxManager) *Service {
@@ -18,6 +25,10 @@ func NewService(repo *Repository, txm database.TxManager) *Service {
 		repo: repo,
 		txm:  txm,
 	}
+}
+
+func (s *Service) SetSystemService(sys SystemIntegration) {
+	s.systemSvc = sys
 }
 
 // Invoicing Operations
@@ -125,7 +136,42 @@ func (s *Service) IssueInvoice(ctx context.Context, storeID, invoiceID, userID u
 		}
 
 		res, err = s.repo.IssueInvoice(ctx, tx, storeID, invoiceID, userID)
-		return err
+		if err != nil {
+			return err
+		}
+
+		if s.systemSvc != nil {
+			var orgID uuid.UUID
+			_ = tx.QueryRowContext(ctx, "SELECT organization_id FROM store.stores WHERE id = $1", storeID).Scan(&orgID)
+
+			var orgPtr *uuid.UUID
+			if orgID != uuid.Nil {
+				orgPtr = &orgID
+			}
+
+			// 1. Transactionally record audit trail
+			_, _ = s.systemSvc.RecordAuditTx(ctx, tx, &userID, orgPtr, &storeID, "invoice.issued", map[string]any{
+				"invoice_id":     res.ID.String(),
+				"invoice_number": res.InvoiceNumber,
+				"total_amount":   res.TotalAmount,
+				"currency":       res.Currency,
+			})
+
+			// 2. Transactionally commit outbox domain event
+			outboxPayload := map[string]any{
+				"invoice_id":     res.ID.String(),
+				"invoice_number": res.InvoiceNumber,
+				"store_id":       storeID.String(),
+				"total_amount":   res.TotalAmount,
+				"currency":       res.Currency,
+			}
+			if orgPtr != nil {
+				outboxPayload["organization_id"] = orgPtr.String()
+			}
+			_, _ = s.systemSvc.PublishOutboxTx(ctx, tx, "invoice", res.ID, "invoice.issued", outboxPayload)
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -145,7 +191,36 @@ func (s *Service) VoidInvoice(ctx context.Context, storeID, invoiceID, userID uu
 		}
 
 		res, err = s.repo.VoidInvoice(ctx, tx, storeID, invoiceID, userID, reason)
-		return err
+		if err != nil {
+			return err
+		}
+
+		if s.systemSvc != nil {
+			var orgID uuid.UUID
+			_ = tx.QueryRowContext(ctx, "SELECT organization_id FROM store.stores WHERE id = $1", storeID).Scan(&orgID)
+
+			var orgPtr *uuid.UUID
+			if orgID != uuid.Nil {
+				orgPtr = &orgID
+			}
+
+			_, _ = s.systemSvc.RecordAuditTx(ctx, tx, &userID, orgPtr, &storeID, "invoice.voided", map[string]any{
+				"invoice_id": res.ID.String(),
+				"reason":     reason,
+			})
+
+			outboxPayload := map[string]any{
+				"invoice_id": res.ID.String(),
+				"store_id":   storeID.String(),
+				"reason":     reason,
+			}
+			if orgPtr != nil {
+				outboxPayload["organization_id"] = orgPtr.String()
+			}
+			_, _ = s.systemSvc.PublishOutboxTx(ctx, tx, "invoice", res.ID, "invoice.voided", outboxPayload)
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, err
