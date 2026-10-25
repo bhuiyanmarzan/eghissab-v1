@@ -67,40 +67,18 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) error {
 	if err != nil {
 		return err
 	}
-	/*
-		secret, err := opaque()
+
+	return s.tx.WithTx(ctx, func(ctx context.Context, tx database.DBTX) error {
+		_, ok, err := s.repo.RegisterTx(ctx, tx, email, first, last, hash)
 		if err != nil {
 			return err
 		}
-		id := uuid.New()
-		created, err := inTx(s, ctx, func(ctx context.Context) (bool, error) {
-			return s.repo.register(ctx, email, first, last, hash, id, digest(secret))
-		})
-		if err != nil {
-			return err
-		}
-		if created {
-			return s.deliver(ctx, email, id.String()+"."+secret)
+		if !ok {
+			// Email already exists: complete without duplicate creation (anti-enumeration)
+			return nil
 		}
 		return nil
-	*/
-
-	// Direct registration without email verification / verification token secret
-	id := uuid.New()
-	dummyHash := digest("direct_auto_verify")
-	_, err = inTx(s, ctx, func(ctx context.Context) (bool, error) {
-		ok, err := s.repo.register(ctx, email, first, last, hash, id, dummyHash)
-		if err != nil || !ok {
-			return ok, err
-		}
-		// Auto-verify account immediately so status becomes 'active' and contact is verified
-		_, err = s.repo.verify(ctx, id, dummyHash)
-		return ok, err
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 func (s *Service) Resend(ctx context.Context, email string) error {
 	email, err := normalizeEmail(email)

@@ -302,6 +302,7 @@ func (m *Module) login(w http.ResponseWriter, r *http.Request) {
 		m.fail(w, err)
 		return
 	}
+
 	out, err := m.Service.Login(r.Context(), in.Email, in.Password)
 	if err != nil {
 		m.fail(w, err)
@@ -600,4 +601,3 @@ func (m *Module) getIdentities(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, identities)
 }
-

@@ -3,7 +3,7 @@
 As of 2026-10-23 (Asia/Dhaka). AUTH-001 and its scoped SEC-001/SEC-002/DB-001 prerequisites are VERIFIED. Automated tests, migration application to PostgreSQL, live role/RLS verification, and full lifecycle tests were executed successfully. Existing DOC-001 protected .agents installation blocker remains unchanged.
 
 FACT: complete backend identity lifecycle is composed and operational in cmd/api:
-1. User registration: module-level `RegisterRequest` DTO validation returning `ValidationError` (field-level 422 `validation_failed`), bcrypt cost 12 password hashing, advisory locks, duplicate account handling, and atomic DB transactions.
+1. User registration: module-level `RegisterRequest` DTO validation returning `ValidationError` (field-level 422 `validation_failed`), bcrypt cost 12 password hashing, direct Go parameterized SQL transaction (`RegisterTx`) inserting active user into `identity.users`, primary verified email into `identity.user_contacts`, and active credentials into `identity.user_identities` within a service-owned transaction (`s.tx.WithTx`), eliminating reliance on the PostgreSQL `identity.auth_register` stored procedure with migration 000018.
 2. Email verification: 30-minute expiry, single-use SHA-256 tokens, 5-attempt brute-force protection, SMTP delivery with LogMailer dev fallback, and 60-second cooldown resend.
 3. Login: credential validation, constant-time dummy hash comparison for non-existent accounts, active status verification, and session creation.
 4. JWT authentication: 10-minute short-lived HMAC-SHA256 access tokens with strict header, claims (iss, aud, sub, sid, jti, iat, exp), and signature verification.

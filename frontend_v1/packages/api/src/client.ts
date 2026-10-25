@@ -6,7 +6,7 @@ type AuthFailureHandler = () => void;
 
 let tokenGetter: TokenGetter = () => null;
 let refreshHandler: RefreshHandler | null = null;
-let authFailureHandler: AuthFailureHandler = () => {};
+let authFailureHandler: AuthFailureHandler = () => { };
 
 export function configureApiAuth(options: {
   getToken: TokenGetter;

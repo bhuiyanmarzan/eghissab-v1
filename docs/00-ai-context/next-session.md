@@ -1,7 +1,7 @@
 # Next session
 
-Last implementation: AUTH-001, SEC-001, SEC-002, DB-001, DTO-001, WEB-001: VERIFIED; AUTH-002, CON-000, ORG-001, STORE-001, BILL-001, AUTHZ-001, STORE-002, MENU-001, STORE-OPS-001, GLOBAL-CUST-001, SYS-001 (Domain F), FRONTEND-V1-TURBO, MERCHANT-PORT & RATE-LIMITING-PHASE-1-2: IMPLEMENTED_UNVERIFIED (2026-10-24).
-Explicit scope: full backend identity/authentication lifecycle, standardized module-level DTO validation (`Validate() error` returning HTTP 422 `validation_failed`), PostgreSQL database/sql migrations 000001–000017 applied, restricted eghissab_app runtime role with NOBYPASSRLS.
+Last implementation: AUTH-001, SEC-001, SEC-002, DB-001, DTO-001, WEB-001: VERIFIED; AUTH-002, CON-000, ORG-001, STORE-001, BILL-001, AUTHZ-001, STORE-002, MENU-001, STORE-OPS-001, GLOBAL-CUST-001, SYS-001 (Domain F), FRONTEND-V1-TURBO, MERCHANT-PORT, FRONTEND-V1-PROXY-ROUTING, AUTH-TX-REGISTRATION & RATE-LIMITING-PHASE-1-2: IMPLEMENTED_UNVERIFIED (2026-10-25).
+Explicit scope: full backend identity/authentication lifecycle, standardized module-level DTO validation (`Validate() error` returning HTTP 422 `validation_failed`), PostgreSQL database/sql migrations 000001–000018 applied, restricted eghissab_app runtime role with NOBYPASSRLS.
 Audit, Outbox & Background Jobs (Domain F) fully implemented and verified:
 1. `system.audit_events`: Protected activity trail with recursive sanitization (`SanitizeDetails`) redacting passwords, tokens, API keys, secrets, hashes, cookies, and PINs to `[REDACTED]`.
 2. `system.outbox_events` & `system.event_deliveries`: Transactional outbox pattern committing domain events (`PublishOutboxTx`) within business transactions, eliminating dual writes; asynchronous delivery tracking per consumer.

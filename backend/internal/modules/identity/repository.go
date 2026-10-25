@@ -36,12 +36,54 @@ func (r *Repository) pruneAttempts(ctx context.Context, olderThan time.Duration)
 	})
 	return count, err
 }
-func (r *Repository) register(ctx context.Context, email, first, last, password string, id uuid.UUID, hash string) (bool, error) {
-	var user sql.NullString
-	err := withExecutor(ctx, func(ctx context.Context, q database.DBTX) error {
-		return q.QueryRowContext(ctx, `SELECT identity.auth_register($1,$2,$3,$4,$5,$6)`, email, first, last, password, id, hash).Scan(&user)
-	})
-	return user.Valid, err
+// RegisterTx executes transactional account registration using direct parameterized SQL statements.
+// It checks if the email already exists in identity.user_contacts, and if not, creates the user,
+// primary contact (marked as verified), and credentials identity within the provided transaction.
+// Returns (userID, true, nil) on success, or (uuid.Nil, false, nil) if the email is already registered.
+func (r *Repository) RegisterTx(ctx context.Context, tx database.DBTX, email, first, last, passwordHash string) (uuid.UUID, bool, error) {
+	var exists bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM identity.user_contacts 
+			WHERE type = 'email' AND lower(normalized_value) = lower($1)
+		)
+	`, email).Scan(&exists)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("check email exists: %w", err)
+	}
+	if exists {
+		return uuid.Nil, false, nil
+	}
+
+	userID := uuid.New()
+	contactID := uuid.New()
+	identityID := uuid.New()
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO identity.users (id, first_name, last_name, status)
+		VALUES ($1, $2, NULLIF($3, ''), 'active')
+	`, userID, first, last)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("insert user: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO identity.user_contacts (id, user_id, type, normalized_value, is_primary, verified_at)
+		VALUES ($1, $2, 'email', lower($3), true, clock_timestamp())
+	`, contactID, userID, email)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("insert contact: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO identity.user_identities (id, user_id, provider, password_hash, status)
+		VALUES ($1, $2, 'credentials', $3, 'active')
+	`, identityID, userID, passwordHash)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("insert identity: %w", err)
+	}
+
+	return userID, true, nil
 }
 func (r *Repository) resend(ctx context.Context, email string, id uuid.UUID, hash string) (bool, error) {
 	var ok bool

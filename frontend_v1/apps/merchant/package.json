@@ -44,6 +44,7 @@
     "@eghissab/config-eslint": "workspace:*",
     "@eghissab/config-typescript": "workspace:*",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",

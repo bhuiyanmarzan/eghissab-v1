@@ -445,3 +445,46 @@ Related: [Documentation index](../README.md).
      - Frontend: `tsc -b && vite build` in `frontend/` succeeded with 0 errors (exit code 0).
      - Monorepo: `turbo run type-check` across 10 packages in `frontend_v1/` passed with 0 errors (exit code 0).
   6. Standing instruction honored: No test files authored; tracked as `IMPLEMENTED_UNVERIFIED`.
+
+## 2026-10-24 — Merchant Frontend API Proxy Fix (Routing port 3001 to backend 8080)
+- User reported that in the merchant frontend (`frontend_v1/apps/merchant`), all API requests were hitting local dev server port 3001 and failing instead of reaching the backend API at `http://localhost:8080`.
+- Implementation plan `merchant_api_proxy_fix_plan.md` created, reviewed, and approved.
+- Root causes:
+  1. `frontend_v1/apps/merchant/vite.config.ts` was missing the `/api` reverse proxy, causing Axios requests (`baseURL: '/api'`) to be intercepted by Vite locally on port 3001.
+  2. `frontend_v1/.env` was malformed (`VITE_API_URL="http:localhost:8080"`, missing `//`) and uninherited by Vite because `envDir` was not set to the monorepo root. Pointing `VITE_API_URL` directly to `localhost:8080` in the browser would also trigger CORS errors since the Go backend has no CORS middleware.
+- Implementation:
+  1. `frontend_v1/.env`: Configured `VITE_API_URL=/api` and `VITE_BACKEND_URL=http://localhost:8080`.
+  2. `frontend_v1/.env.example`: Created template with standard defaults.
+  3. `frontend_v1/apps/merchant/vite.config.ts`: Configured `envDir: path.resolve(__dirname, '../../')`, and added `server.proxy` & `preview.proxy` forwarding `/api/*` to `http://localhost:8080/*` with `rewrite: (path) => path.replace(/^\/api/, '')`, `changeOrigin: true`, and `cookiePathRewrite: { '*': '/' }`.
+  4. Monorepo parity: Applied identical proxy configurations to `frontend_v1/apps/landing/vite.config.ts` (port 3000), `frontend_v1/apps/consumer/vite.config.ts` (port 3002), and `frontend_v1/apps/admin/vite.config.ts` (port 3003).
+- Verification:
+  - `pnpm --filter @eghissab/merchant type-check` passed with 0 errors (`tsc --noEmit`).
+  - `pnpm --filter @eghissab/merchant build` compiled static production bundle with 0 errors (`tsc -b && vite build`).
+  - Monorepo `pnpm type-check` passed across all 7 workspace packages (`turbo run type-check`, 7/7 passed).
+  - Monorepo `pnpm build` passed across all 4 applications (`turbo run build`, 4/4 passed).
+  - Walkthrough artifact `walkthrough.md` created.
+  - State: `IMPLEMENTED_UNVERIFIED` (automated tests deferred per standing policy).
+
+## 2026-10-25 — Identity Registration: Transition from Stored Procedure to Go Transaction
+- User requested eliminating the PostgreSQL stored procedure `identity.auth_register` from the repository and executing user registration directly via a Go database transaction.
+- Implementation plan `identity_registration_transaction_plan.md` created, reviewed, and approved.
+- Database Schema & Migrations:
+  1. `backend/migrations/000018_identity_registration_dml.up.sql`:
+     - Granted `SELECT, INSERT` on `identity.users` and `identity.user_contacts` to `eghissab_app`.
+     - Granted `INSERT` on `identity.user_identities` to `eghissab_app` (preserving credential security with no SELECT grant on credentials).
+     - Created RLS policies `users_insert_policy`, `user_contacts_insert_policy`, `user_contacts_lookup_policy`, and `user_identities_insert_policy` for `eghissab_app`.
+  2. Applied migration 000018 to PostgreSQL 17 (`eghissab_v1_dev`, schema version 18, dirty=false).
+- Backend Implementation:
+  1. `backend/internal/modules/identity/repository.go`:
+     - Replaced `identity.auth_register` call with `RegisterTx(ctx context.Context, tx database.DBTX, email, first, last, passwordHash string) (uuid.UUID, bool, error)`.
+     - Executes parameterized query to check if email exists in `identity.user_contacts`.
+     - Inserts active user into `identity.users`, primary verified email contact into `identity.user_contacts`, and credentials identity into `identity.user_identities` within transaction.
+  2. `backend/internal/modules/identity/service.go`:
+     - Updated `Service.Register` to manage the transaction via `s.tx.WithTx(ctx, func(ctx context.Context, tx database.DBTX) error { ... })`.
+     - Calls `s.repo.RegisterTx` directly. Eliminated the two-step dummy hash auto-verification workaround.
+- Verification:
+  - `go build ./...` compiled cleanly with 0 errors.
+  - `bin/api` and `bin/migrate` binaries compiled cleanly.
+  - `CheckRuntime` verified passing with `runtime_safe: t` under `eghissab_app`.
+  - Transactional SQL statements verified live in PostgreSQL under role `eghissab_app` with RLS enforced.
+  - State: `IMPLEMENTED_UNVERIFIED` (automated tests deferred per standing policy).

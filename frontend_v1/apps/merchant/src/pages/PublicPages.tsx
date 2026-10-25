@@ -139,7 +139,7 @@ export function AuthPage({ mode }: { mode: string }) {
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: queryEmail || 'info@codedthemes.com',
+      email: '',
       password: '',
     },
   });
